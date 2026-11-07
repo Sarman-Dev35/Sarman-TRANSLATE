@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import threading
+import hashlib
 from pathlib import Path
 
 import keyring
@@ -59,7 +59,8 @@ class TranslationStudio(QDialog):
         super().__init__(parent)
         self.game = game
         self.entries: list[TextEntry] = []
-        self.workspace_path = Path.home() / "AppData" / "Local" / "Sarman" / "TRANSLATE" / "workspaces" / (self._safe_name(game.name) + ".json")
+        game_identity = hashlib.sha256(str(Path(game.path).resolve()).casefold().encode("utf-8")).hexdigest()[:10]
+        self.workspace_path = Path.home() / "AppData" / "Local" / "Sarman" / "TRANSLATE" / "workspaces" / (self._safe_name(game.name) + "-" + game_identity + ".json")
         self.worker = None
         self._rendering = False
         self.setWindowTitle(f"Çeviri Atölyesi · {game.name}")
