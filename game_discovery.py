@@ -226,8 +226,12 @@ _LOCALE_DIRS = {"locale", "locales", "lang", "langs", "language", "languages", "
 def _detect_language_files(game_root: Path) -> tuple[str, ...]:
     found: set[str] = set()
     scanned = 0
+    visited_dirs = 0
     try:
         for current, dirs, files in os.walk(game_root):
+            visited_dirs += 1
+            if visited_dirs > 1500:
+                break
             rel = Path(current).relative_to(game_root)
             if len(rel.parts) > 5:
                 dirs[:] = []
