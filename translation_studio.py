@@ -4,7 +4,7 @@ import json
 import hashlib
 from pathlib import Path
 
-import keyring
+import credential_store
 from PySide6.QtCore import QThread, Signal, Qt
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
@@ -236,8 +236,8 @@ class TranslationStudio(QDialog):
 
     def translate_pending(self):
         try:
-            api_key = keyring.get_password(SERVICE, "user-api-key")
-            model = keyring.get_password(SERVICE, "model") or "gemini-2.5-flash"
+            api_key = credential_store.get_password(SERVICE, "user-api-key")
+            model = credential_store.get_password(SERVICE, "model") or "gemini-2.5-flash"
         except Exception as exc:
             QMessageBox.warning(self, "Gemini API", f"Windows kimlik bilgisi kasası açılamadı: {exc}")
             return
