@@ -15,6 +15,7 @@ VSVersionInfo(
         '040904B0',
         [
           StringStruct('CompanyName', 'Sarman Studios'),
+          StringStruct('LegalCopyright', 'Copyright © 2026 Sarman Studios'),
           StringStruct('FileDescription', 'Sarman TRANSLATE - Game Localization'),
           StringStruct('FileVersion', '0.1.0.0'),
           StringStruct('InternalName', 'Sarman TRANSLATE'),
