@@ -6,7 +6,9 @@ Sarman TRANSLATE, oyunların metinlerini/dil dosyalarını bulmaya ve yerelleşt
 - Koyu, sade arayüz; Sarman turuncusu vurgu rengi.
 - Steam kütüphanelerini ve kurulu oyun manifestlerini keşfeder.
 - Epic Games Launcher kurulum manifestlerini tarar.
-- Yaygın oyun klasörlerini ek kaynak olarak tarar.
+- Windows GameConfigStore kayıtları ve XboxGames klasörleri üzerinden Microsoft Store / Xbox oyunlarını bulmaya çalışır.
+- Kullanıcının Games/Oyunlar klasörlerini ek kaynak olarak tarar.
+- Platform ve algılama kaynağını oyun listesinde gösterir; tarama oyun dosyalarını değiştirmez.
 - Oyunları arama ve seçme.
 - Yama Merkezi üzerinden uyumlu ZIP yama paketini seçme, doğrulama ve hedef oyuna yükleme.
 - Var olan hedef dosyalar için yerel yedek oluşturma ve son Sarman yamasını geri alma.
@@ -91,3 +93,8 @@ Dil profilleri, dosya biçimi çözücüleri, kalite kontrolleri ve oyun motoru 
 - Bağlantı testi, anahtar ile erişilebilen ve `generateContent` destekleyen modelleri listeler. Ücretsiz kullanım yalnızca Google'ın ücretsiz katman sunduğu modellerde ve limitler içinde mümkündür; ödeme yapılmaması garanti edilecekse Google Cloud projesinde faturalandırma etkinleştirilmemelidir.
 - Kota test komutları (yalnızca arayüz simülasyonu): `/kotabitimiuyarısı1dk`, `/kotabitimiuyarısı1saat`, `/kotabitimiuyarısıgünlük`. Bunlar gerçek API kotasını değiştirmez.
 - Gerçek 429/RESOURCE_EXHAUSTED yanıtlarının reset süresi henüz çeviri motoruna bağlanmadı; sağlayıcı kesin bir bekleme süresi vermiyorsa uygulama tahmini geri sayım göstermemelidir.
+
+
+## Oyun keşfi ve sonraki çeviri hattı
+
+Oyun keşfinin teknik tasarımı ve çeviri hattının aşamaları için [docs/TRANSLATION_PIPELINE.md](docs/TRANSLATION_PIPELINE.md) dosyasına bak. Steam/Epic yerel manifestleri kurulu oyunları gösterir; Microsoft Store/Xbox tarafında Windows'un yerel oyun kayıtları kullanılır. Bunlar hesapta sahip olunan tüm oyunların lisans kataloğu değildir. Kurulu olmayan oyunların lisans sahipliğini göstermek için ileride platformların resmi ve izinli hesap API'leri gerekebilir.
