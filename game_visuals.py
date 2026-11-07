@@ -42,6 +42,9 @@ def interpolate_palette(start,end,t):return _mix(start[0],end[0],t),_mix(start[1
 
 def theme_stylesheet(accent="#f06a3d",secondary="#a92f45",compact=False):
  radius="10px" if compact else "12px"
+ soft_accent=f"#{0x22:02x}{accent.lstrip('#')}"
+ selected_accent=f"#{0x44:02x}{accent.lstrip('#')}"
+ hover_accent=f"#{0x55:02x}{accent.lstrip('#')}"
  return f"""
  QWidget{{background:#0b0d12;color:#f2f0ed;font-family:'Segoe UI';font-size:13px;}}
  QFrame#sidebar{{background:#10131a;border-right:1px solid #252a34;}}
@@ -59,17 +62,17 @@ def theme_stylesheet(accent="#f06a3d",secondary="#a92f45",compact=False):
  QPushButton#primary{{background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 {accent},stop:1 {secondary});color:#fff;border:0;padding:11px 17px;font-weight:900;}}
  QPushButton#navButton,QPushButton#navActive{{text-align:left;padding:13px 12px;border:0;}}
  QPushButton#navButton{{background:transparent;color:#a5adba;}}
- QPushButton#navActive{{background:{accent}22;color:#fff;border-left:3px solid {accent};}}
+ QPushButton#navActive{{background:{soft_accent};color:#fff;border-left:3px solid {accent};}}
  QLineEdit{{background:#141923;border:1px solid #343b49;border-radius:{radius};padding:10px 12px;color:#fff;}}
  QLineEdit:focus{{border-color:{accent};}}
- QTableWidget{{background:#10151e;alternate-background-color:#141a24;border:1px solid #2b303c;border-radius:14px;padding:5px;selection-background-color:{accent}44;gridline-color:transparent;}}
+ QTableWidget{{background:#10151e;alternate-background-color:#141a24;border:1px solid #2b303c;border-radius:14px;padding:5px;selection-background-color:{selected_accent};gridline-color:transparent;}}
  QHeaderView::section{{background:#171d28;color:{accent};border:0;padding:12px 9px;font-size:10px;font-weight:900;letter-spacing:1px;}}
  QTableWidget::item{{padding:9px 8px;border-bottom:1px solid #242b37;}}
  QTableWidget::item:selected{{background:{accent}30;color:#fff;}}
  QLabel#warning{{color:#f0bd91;background:#251a1b;border:1px solid {secondary};border-radius:10px;padding:12px;}}
  QComboBox{{background:#141923;border:1px solid #343b49;border-radius:{radius};padding:8px 10px;min-width:150px;}}
  QComboBox::drop-down{{border:0;width:25px;}}
- QComboBox QAbstractItemView{{background:#171d28;selection-background-color:{accent}55;}}
+ QComboBox QAbstractItemView{{background:#171d28;selection-background-color:{hover_accent};}}
  QProgressBar{{background:#171d28;color:#f5f1ed;border:1px solid #303746;border-radius:7px;text-align:center;min-height:12px;}}
  QProgressBar::chunk{{border-radius:6px;background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 {accent},stop:1 {secondary});}}
  QScrollBar:vertical{{background:#10151e;width:10px;margin:2px;}}
