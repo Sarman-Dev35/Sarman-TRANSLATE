@@ -178,7 +178,10 @@ def rollback_incomplete_patches(game_dir: str | Path) -> list[str]:
 
 def install_patch(archive: str | Path, game_dir: str | Path) -> dict:
     manifest = _load_manifest(archive)
-    root = Path(game_dir).resolve()
+    try:
+        root = Path(game_dir).resolve()
+    except (OSError, RuntimeError, ValueError, TypeError) as exc:
+        raise PatchError(f"Oyun klasörü yolu geçersiz: {exc}") from exc
     if not root.is_dir():
         raise PatchError("Oyun klasörü bulunamadı.")
     if incomplete_patch_installs(root):
@@ -259,7 +262,10 @@ def _restore_state(root: Path, state_dir: Path, state: dict, strict: bool = True
             probe = probe / part
             if probe.is_symlink():
                 raise PatchError("Geri alma sırasında sembolik bağlantı hedefi engellendi.")
-        target = probe.resolve()
+        try:
+            target = probe.resolve()
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise PatchError(f"Geri alma hedefi çözümlenemedi: {exc}") from exc
         if target == root or root not in target.parents:
             raise PatchError("Yedek kaydında oyun klasörü dışına çıkan hedef bulundu.")
         backup_name = entry.get("backup")
@@ -285,7 +291,10 @@ def _restore_state(root: Path, state_dir: Path, state: dict, strict: bool = True
 
 
 def uninstall_latest(game_dir: str | Path) -> str:
-    root = Path(game_dir).resolve()
+    try:
+        root = Path(game_dir).resolve()
+    except (OSError, RuntimeError, ValueError, TypeError) as exc:
+        raise PatchError(f"Oyun klasörü yolu geçersiz: {exc}") from exc
     base = APP_DATA / "backups"
     states = []
     if base.exists():
@@ -295,7 +304,7 @@ def uninstall_latest(game_dir: str | Path) -> str:
                 if not isinstance(state, dict):
                     continue
                 if state.get("schema") == 1 and Path(state.get("game_dir", "")).resolve() == root:
-                    states.append((state_path.stat().st_mtime, state_path, state))
+                    states.append((state_path.stat().st_mtime_ns, state_path, state))
             except (OSError, ValueError, TypeError, RuntimeError):
                 continue
     if not states:
@@ -303,7 +312,7 @@ def uninstall_latest(game_dir: str | Path) -> str:
     _, state_path, state = max(states, key=lambda item: item[0])
     _restore_state(root, state_path.parent, state, strict=True)
     name = state.get("name", "Yama")
-    shutil.rmtree(state_path.parent, ignore_errors=True)
+    shutil.rmtree(state_path.parent)
     return name
 
 
