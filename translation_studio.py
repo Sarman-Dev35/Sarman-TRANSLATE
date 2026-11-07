@@ -17,6 +17,21 @@ from gemini_translator import translate_batch, GeminiTranslationError
 SERVICE = "Sarman.TRANSLATE.Gemini"
 
 
+class TextScanWorker(QThread):
+    completed = Signal(list)
+    failed = Signal(str)
+
+    def __init__(self, game_dir, parent=None):
+        super().__init__(parent)
+        self.game_dir = game_dir
+
+    def run(self):
+        try:
+            self.completed.emit(scan_game_texts(self.game_dir))
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
 class TranslateWorker(QThread):
     progress = Signal(int, int, str)
     row_done = Signal(int, str)
@@ -82,6 +97,7 @@ class TranslationStudio(QDialog):
         game_identity = hashlib.sha256(str(Path(game.path).resolve()).casefold().encode("utf-8")).hexdigest()[:10]
         self.workspace_path = Path.home() / "AppData" / "Local" / "Sarman" / "TRANSLATE" / "workspaces" / (self._safe_name(game.name) + "-" + game_identity + ".json")
         self.worker = None
+        self.scan_worker = None
         self._rendering = False
         self.setWindowTitle(f"Çeviri Atölyesi · {game.name}")
         self.resize(1050, 700)
@@ -145,22 +161,44 @@ class TranslationStudio(QDialog):
                 self.status.setText("Önceki çalışma okunamadı; yeni tarama yapabilirsin.")
 
     def scan(self):
-        try:
-            found = scan_game_texts(self.game.path)
-            existing = {e.entry_id: e for e in self.entries}
-            merged = []
-            for entry in found:
-                previous = existing.get(entry.entry_id)
-                if previous and previous.source == entry.source:
-                    entry.translated = previous.translated
-                    entry.status = previous.status
-                merged.append(entry)
-            self.entries = merged
-            self.render()
-            self.save()
-            self.status.setText(f"Tarama tamamlandı · {len(self.entries)} metin bulundu.")
-        except Exception as exc:
-            QMessageBox.warning(self, "Metin tarama", str(exc))
+        if self.scan_worker and self.scan_worker.isRunning():
+            return
+        if self.worker and self.worker.isRunning():
+            QMessageBox.information(self, "Çeviri sürüyor", "Önce mevcut çeviri kuyruğunun tamamlanmasını bekle.")
+            return
+        self._set_scan_busy(True)
+        self.status.setText("Oyun metinleri arka planda taranıyor…")
+        self.scan_worker = TextScanWorker(self.game.path, self)
+        self.scan_worker.completed.connect(self.scan_completed)
+        self.scan_worker.failed.connect(self.scan_failed)
+        self.scan_worker.start()
+
+    def scan_completed(self, found):
+        existing = {entry.entry_id: entry for entry in self.entries}
+        merged = []
+        for entry in found:
+            previous = existing.get(entry.entry_id)
+            if previous and previous.source == entry.source:
+                entry.translated = previous.translated
+                entry.status = previous.status
+            merged.append(entry)
+        self.entries = merged
+        self.render()
+        self.save()
+        self.status.setText(f"Tarama tamamlandı · {len(self.entries)} metin bulundu.")
+        self._set_scan_busy(False)
+
+    def scan_failed(self, message):
+        self._set_scan_busy(False)
+        self.status.setText("Metin taraması başarısız.")
+        QMessageBox.warning(self, "Metin tarama", message)
+
+    def _set_scan_busy(self, busy):
+        self.scan_btn.setEnabled(not busy)
+        self.translate_btn.setEnabled(not busy)
+        self.export_btn.setEnabled(not busy)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers if busy else (QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed))
+
 
     def render(self):
         self._rendering = True
@@ -243,8 +281,8 @@ class TranslationStudio(QDialog):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers if busy else (QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed))
 
     def closeEvent(self, event):
-        if self.worker and self.worker.isRunning():
-            QMessageBox.information(self, "Çeviri sürüyor", "Çeviri kuyruğu tamamlanana kadar bu pencereyi kapatamazsın. Tamamlanan satırlar otomatik kaydedilir.")
+        if (self.worker and self.worker.isRunning()) or (self.scan_worker and self.scan_worker.isRunning()):
+            QMessageBox.information(self, "İşlem sürüyor", "Tarama veya çeviri işlemi tamamlanana kadar bu pencereyi kapatamazsın. Tamamlanan çeviriler otomatik kaydedilir.")
             event.ignore()
             return
         event.accept()
