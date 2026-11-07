@@ -148,7 +148,7 @@ class MainWindow(QMainWindow):
         eyebrow.setObjectName("eyebrow")
         title = QLabel("Oyunlarını keşfet.")
         title.setObjectName("heroTitle")
-        desc = QLabel("Kütüphaneni tara, oyununu seç ve kullanmak istediğin Türkçe yamayı güvenli biçimde yönet. Tarama sırasında oyun dosyalarına dokunulmaz.")
+        desc = QLabel("Kütüphaneni tara, oyununu seç ve Türkçe yamanı yönet. Kurulum kayıtları oyunun cihazda bulunduğunu gösterir; hesap lisans sahipliğini doğrulamaz. Tarama sırasında oyun dosyalarına dokunulmaz.")
         desc.setObjectName("muted")
         desc.setWordWrap(True)
         h.addWidget(eyebrow)
