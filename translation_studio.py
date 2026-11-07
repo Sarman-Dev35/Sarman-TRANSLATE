@@ -170,7 +170,11 @@ class TranslationStudio(QDialog):
         self.game = game
         self.source_language = str(source_language or "EN").upper()
         self.entries: list[TextEntry] = []
-        game_identity = hashlib.sha256(str(Path(game.path).resolve()).casefold().encode("utf-8")).hexdigest()[:10]
+        try:
+            resolved_game_path = Path(game.path).resolve()
+        except (OSError, RuntimeError, ValueError):
+            resolved_game_path = Path(game.path).absolute()
+        game_identity = hashlib.sha256(str(resolved_game_path).casefold().encode("utf-8")).hexdigest()[:10]
         language_suffix = "" if self.source_language == "EN" else "-" + self._safe_name(self.source_language).lower()
         self.workspace_path = APP_DATA / "workspaces" / (self._safe_name(game.name) + "-" + game_identity + language_suffix + ".json")
         self._operation_busy = False
@@ -265,7 +269,7 @@ class TranslationStudio(QDialog):
         if self.scan_worker and self.scan_worker.isRunning():
             return
         if self.worker and self.worker.isRunning():
-            QMessageBox.information(self, "Çeviri sürüyor", "Önce mevcut çeviri kuyruğunun tamamlanmasını bekle.")
+            QMessageBox.information(self, "İşlem sürüyor", "Model indirme veya çeviri işlemi bitmeden yeni tarama başlatılamaz.")
             return
         self._set_scan_busy(True)
         self.status.setText("Oyun metinleri arka planda taranıyor…")
@@ -284,6 +288,7 @@ class TranslationStudio(QDialog):
         worker = self.sender()
         if worker is self.scan_worker:
             self.scan_worker = None
+            self.scan_btn.setEnabled(True)
         self.refresh_model_status()
 
     def scan_completed(self, found):
@@ -315,7 +320,7 @@ class TranslationStudio(QDialog):
 
     def _set_scan_busy(self, busy):
         self._scan_busy = busy
-        self.scan_btn.setEnabled(not busy)
+        self.scan_btn.setEnabled(not busy and not (self.scan_worker and self.scan_worker.isRunning()))
         self.export_btn.setEnabled(not busy and bool(self.entries))
         self.table.setEditTriggers(
             QTableWidget.NoEditTriggers if busy
