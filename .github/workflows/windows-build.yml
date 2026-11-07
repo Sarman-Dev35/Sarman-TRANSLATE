@@ -11,6 +11,9 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      SIGN_CERT_B64: \${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+      SIGN_CERT_PASSWORD: \${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,27 +28,18 @@ jobs:
       - name: Build executable
         run: pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --collect-all PySide6 --collect-all keyring main.py
       - name: Sign Windows executable with Authenticode
-        if: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' && secrets.WINDOWS_CERTIFICATE_PASSWORD != '' }}
+        if: \${{ env.SIGN_CERT_B64 != '' && env.SIGN_CERT_PASSWORD != '' }}
         shell: pwsh
-        env:
-          CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           $certificatePath = Join-Path $env:RUNNER_TEMP "sarman-signing.pfx"
           try {
-            [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:CERTIFICATE_BASE64))
-            $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
-              Where-Object { $_.FullName -match '\\x64\\signtool.exe        uses: actions/upload-artifact@v4
-        with:
-          name: Sarman-TRANSLATE-Windows
-          path: dist/Sarman TRANSLATE/
-          if-no-files-found: error
- } |
-              Sort-Object FullName -Descending |
+            [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:SIGN_CERT_B64))
+            $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+              Where-Object { $_.Directory.Name -eq "x64" } |
               Select-Object -First 1
             if (-not $signtool) { throw "Windows SDK signtool.exe was not found." }
             $exe = Join-Path $PWD "dist\Sarman TRANSLATE\Sarman TRANSLATE.exe"
-            & $signtool.FullName sign /fd SHA256 /td SHA256 /tr "http://timestamp.digicert.com" /f $certificatePath /p $env:CERTIFICATE_PASSWORD $exe
+            & $signtool.FullName sign /fd SHA256 /td SHA256 /tr "http://timestamp.digicert.com" /f $certificatePath /p $env:SIGN_CERT_PASSWORD $exe
             if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed." }
             & $signtool.FullName verify /pa /v $exe
             if ($LASTEXITCODE -ne 0) { throw "Authenticode signature verification failed." }
@@ -54,8 +48,8 @@ jobs:
             Remove-Item $certificatePath -Force -ErrorAction SilentlyContinue
           }
       - name: Explain unsigned build when no certificate is configured
-        if: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 == '' || secrets.WINDOWS_CERTIFICATE_PASSWORD == '' }}
-        run: echo "::warning::No Authenticode certificate secrets configured. The executable will be unsigned and Windows SmartScreen may show an unknown publisher warning."
+        if: \${{ env.SIGN_CERT_B64 == '' || env.SIGN_CERT_PASSWORD == '' }}
+        run: echo "::warning::No Authenticode certificate configured. The executable will be unsigned and Windows SmartScreen may show an unknown publisher warning."
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
