@@ -82,3 +82,12 @@ Her oyun aynı dil dosyası biçimini kullanmaz. Unity, Unreal ve özel motorlar
 ## Katkı
 
 Dil profilleri, dosya biçimi çözücüleri, kalite kontrolleri ve oyun motoru yerelleştirme entegrasyonları için katkılar memnuniyetle karşılanır. Oynanış veya hile modifikasyonları kapsam dışıdır.
+
+
+## Gemini API (ilk aşama)
+- Ayarlar > Gemini API bölümünden kullanıcının kendi anahtarı eklenebilir.
+- Anahtar Windows kimlik bilgisi kasası üzerinden saklanır (keyring); kaynak koduna, GitHub'a veya oyun klasörlerine yazılmaz.
+- Google AI Studio sayfası uygulamadan açılabilir. Google'ın güvenlik/onay akışı nedeniyle API anahtarını uygulama içinde otomatik oluşturmak yerine kullanıcı Google sayfasında oluşturup yapıştırır.
+- Bağlantı testi, anahtar ile erişilebilen ve `generateContent` destekleyen modelleri listeler. Ücretsiz kullanım yalnızca Google'ın ücretsiz katman sunduğu modellerde ve limitler içinde mümkündür; ödeme yapılmaması garanti edilecekse Google Cloud projesinde faturalandırma etkinleştirilmemelidir.
+- Kota test komutları (yalnızca arayüz simülasyonu): `/kotabitimiuyarısı1dk`, `/kotabitimiuyarısı1saat`, `/kotabitimiuyarısıgünlük`. Bunlar gerçek API kotasını değiştirmez.
+- Gerçek 429/RESOURCE_EXHAUSTED yanıtlarının reset süresi henüz çeviri motoruna bağlanmadı; sağlayıcı kesin bir bekleme süresi vermiyorsa uygulama tahmini geri sayım göstermemelidir.
