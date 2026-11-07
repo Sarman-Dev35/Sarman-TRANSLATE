@@ -98,6 +98,43 @@ class TranslationCoreTests(unittest.TestCase):
             manifest = inspect_patch(archive)
             self.assertEqual(manifest["files"][0]["target"], "text.json")
 
+    def test_patch_export_appends_zip_extension_and_verifies_archive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "text.json").write_text('{"hello":"Hello"}', encoding="utf-8")
+            entries = scan_game_texts(root)
+            entries[0].translated = "Merhaba"
+            created = create_translation_patch(root, entries, root / "generated", "Demo")
+            self.assertEqual(created.name, "generated.zip")
+            self.assertTrue(created.is_file())
+            with zipfile.ZipFile(created) as archive:
+                self.assertIsNone(archive.testzip())
+                self.assertIn("sarman-patch.json", archive.namelist())
+            self.assertFalse((root / "generated.zip.tmp").exists())
+
+    def test_patch_export_rejects_lost_placeholders_with_clear_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "text.json").write_text('{"hello":"Hello {player_name}"}', encoding="utf-8")
+            entries = scan_game_texts(root)
+            entries[0].translated = "Merhaba"
+            with self.assertRaisesRegex(ValueError, "Değişkenleri"):
+                create_translation_patch(root, entries, root / "bad.zip", "Demo")
+            self.assertFalse((root / "bad.zip").exists())
+
+    def test_patch_export_does_not_leave_partial_zip_for_stale_workspace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "text.json"
+            source.write_text('{"hello":"Hello"}', encoding="utf-8")
+            entries = scan_game_texts(root)
+            entries[0].translated = "Merhaba"
+            source.write_text('{"hello":"Changed"}', encoding="utf-8")
+            with self.assertRaises(StaleSourceError):
+                create_translation_patch(root, entries, root / "stale.zip", "Demo")
+            self.assertFalse((root / "stale.zip").exists())
+            self.assertFalse((root / "stale.zip.tmp").exists())
+
 
 class PatchManagerTests(unittest.TestCase):
     def test_rejects_path_traversal(self):

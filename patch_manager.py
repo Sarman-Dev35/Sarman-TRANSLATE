@@ -235,7 +235,7 @@ def uninstall_latest(game_dir: str | Path) -> str:
                     continue
                 if state.get("schema") == 1 and Path(state.get("game_dir", "")).resolve() == root:
                     states.append((state_path.stat().st_mtime, state_path, state))
-            except (OSError, ValueError, TypeError):
+            except (OSError, ValueError, TypeError, RuntimeError):
                 continue
     if not states:
         raise PatchError("Bu oyun için geri alınabilir bir Sarman yama kaydı bulunamadı.")
@@ -248,7 +248,10 @@ def uninstall_latest(game_dir: str | Path) -> str:
 
 def installed_patch_languages(game_dir: str | Path) -> set[str]:
     """Return language codes from active Sarman patch journals for one game."""
-    root = Path(game_dir).resolve()
+    try:
+        root = Path(game_dir).resolve()
+    except (OSError, ValueError, RuntimeError, TypeError):
+        return set()
     base = APP_DATA / "backups"
     found: set[str] = set()
     if not base.is_dir():
@@ -266,7 +269,7 @@ def installed_patch_languages(game_dir: str | Path) -> set[str]:
                     found.add(language.strip().casefold())
                 elif "türkçe" in str(state.get("name", "")).casefold() or "turkish" in str(state.get("name", "")).casefold():
                     found.add("tr")
-            except (OSError, ValueError, TypeError):
+            except (OSError, ValueError, TypeError, RuntimeError):
                 continue
     except OSError:
         return found
@@ -275,7 +278,10 @@ def installed_patch_languages(game_dir: str | Path) -> set[str]:
 
 def uninstall_all(game_dir: str | Path) -> list[str]:
     """Restore every active Sarman patch for a game, newest first, then remove its journals."""
-    root = Path(game_dir).resolve()
+    try:
+        root = Path(game_dir).resolve()
+    except (OSError, ValueError, RuntimeError, TypeError) as exc:
+        raise PatchError(f"Oyun klasörü yolu geçersiz: {exc}") from exc
     base = APP_DATA / "backups"
     states = []
     if not base.exists():
@@ -285,7 +291,7 @@ def uninstall_all(game_dir: str | Path) -> list[str]:
             state = json.loads(state_path.read_text(encoding="utf-8"))
             if isinstance(state, dict) and state.get("schema") == 1 and Path(state.get("game_dir", "")).resolve() == root:
                 states.append((state_path.stat().st_mtime_ns, state_path, state))
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError, RuntimeError):
             continue
     names = []
     for _, state_path, state in sorted(states, key=lambda item: item[0], reverse=True):

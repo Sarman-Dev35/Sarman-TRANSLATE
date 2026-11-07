@@ -2,7 +2,7 @@ name: Translation MVP Tests
 
 on:
   push:
-    branches: [main, feature/complete-translation-mvp, feature/format-preservation-engine-readiness, feature/local-translation-engine-patch-management, feature/model-management-and-patch-controls, feature/signed-publisher-download-progress]
+    branches: [main, feature/complete-translation-mvp, feature/format-preservation-engine-readiness, feature/local-translation-engine-patch-management, feature/model-management-and-patch-controls, feature/signed-publisher-download-progress, fix/patch-export-rescan-and-branding]
     paths:
       - '**.py'
       - 'requirements.txt'
@@ -30,8 +30,13 @@ jobs:
         run: python -m pip install -r requirements.txt
       - name: Compile Python modules
         run: python -m compileall -q .
+      - name: Generate and validate Sarman application icon
+        run: |
+          python tools/build_icon.py
+          if (!(Test-Path "assets/sarman-translate.ico")) { throw "Application icon was not generated." }
+          if ((Get-Item "assets/sarman-translate.ico").Length -lt 1000) { throw "Application icon is unexpectedly small." }
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Windows desktop UI smoke test
         run: |
-          python -c "from PySide6.QtWidgets import QApplication; from main import MainWindow; from game_discovery import Game, discover_games; from translation_studio import TranslationStudio, GlossaryDialog; from translation_core import TextEntry; import tempfile; app=QApplication([]); w=MainWindow(); assert w.pages.count()==2; assert w.table.columnCount()==3; assert hasattr(w, 'uninstall_all_btn'); assert hasattr(w, 'remove_game_patches_btn'); d=tempfile.TemporaryDirectory(); studio=TranslationStudio(Game('Smoke Test','Test',d.name),w); assert studio.table.columnCount()==4; assert hasattr(studio, 'glossary_btn'); assert hasattr(studio, 'model_btn'); assert hasattr(studio, 'remove_model_btn'); glossary=GlossaryDialog(studio); assert glossary.table.columnCount()==2; glossary.close(); studio.entries=[TextEntry('smoke','sample.json','/hello','Hello')]; studio.render(); studio._translation_done(0,'Merhaba'); assert studio.table.item(0,3).text()=='Merhaba'; assert studio.autosave_timer.isActive(); studio.autosave_timer.stop(); assert isinstance(discover_games([]),list); studio.close(); w.close(); d.cleanup(); print('Windows desktop and discovery smoke tests passed.')"
+          python -c "from PySide6.QtWidgets import QApplication; from main import MainWindow; from game_discovery import Game, discover_games; from translation_studio import TranslationStudio, GlossaryDialog; from translation_core import TextEntry; import tempfile; app=QApplication([]); w=MainWindow(); assert not w.windowIcon().isNull(); assert w.pages.count()==2; assert w.table.columnCount()==3; assert hasattr(w, 'uninstall_all_btn'); assert hasattr(w, 'remove_game_patches_btn'); d=tempfile.TemporaryDirectory(); studio=TranslationStudio(Game('Smoke Test','Test',d.name),w); assert studio.table.columnCount()==4; assert hasattr(studio, 'glossary_btn'); assert hasattr(studio, 'model_btn'); assert hasattr(studio, 'remove_model_btn'); glossary=GlossaryDialog(studio); assert glossary.table.columnCount()==2; glossary.close(); studio.entries=[TextEntry('smoke','sample.json','/hello','Hello')]; studio.render(); studio._translation_done(0,'Merhaba'); assert studio.table.item(0,3).text()=='Merhaba'; assert studio.autosave_timer.isActive(); studio.autosave_timer.stop(); assert isinstance(discover_games([]),list); studio.close(); w.close(); d.cleanup(); print('Windows desktop and discovery smoke tests passed.')"

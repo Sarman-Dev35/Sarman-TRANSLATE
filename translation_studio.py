@@ -101,7 +101,7 @@ class TextScanWorker(QThread):
 
     def __init__(self, game_dir, parent=None):
         super().__init__(parent)
-        self.game_dir = game_dir
+        self.game_dir = str(game_dir)
 
     def run(self):
         try:
@@ -172,6 +172,7 @@ class TranslationStudio(QDialog):
         self.workspace_path = Path.home() / "AppData" / "Local" / "Sarman" / "TRANSLATE" / "workspaces" / (self._safe_name(game.name) + "-" + game_identity + ".json")
         self.worker = None
         self.scan_worker = None
+        self._scan_generation = 0
         self._rendering = False
         self.autosave_timer = QTimer(self)
         self.autosave_timer.setSingleShot(True)
@@ -255,12 +256,26 @@ class TranslationStudio(QDialog):
             return
         self._set_scan_busy(True)
         self.status.setText("Oyun metinleri arka planda taranıyor…")
-        self.scan_worker = TextScanWorker(self.game.path, self)
-        self.scan_worker.completed.connect(self.scan_completed)
-        self.scan_worker.failed.connect(self.scan_failed)
-        self.scan_worker.start()
+        self._scan_generation += 1
+        generation = self._scan_generation
+        worker = TextScanWorker(self.game.path, self)
+        self.scan_worker = worker
+        worker.generation = generation
+        worker.completed.connect(self.scan_completed)
+        worker.failed.connect(self.scan_failed)
+        worker.finished.connect(self._scan_thread_finished)
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+
+    def _scan_thread_finished(self):
+        worker = self.sender()
+        if worker is self.scan_worker:
+            self.scan_worker = None
 
     def scan_completed(self, found):
+        worker = self.sender()
+        if worker is not None and worker is not self.scan_worker:
+            return
         existing = {entry.entry_id: entry for entry in self.entries}
         merged = []
         for entry in found:
@@ -277,6 +292,9 @@ class TranslationStudio(QDialog):
         self.refresh_model_status()
 
     def scan_failed(self, message):
+        worker = self.sender()
+        if worker is not None and worker is not self.scan_worker:
+            return
         self._set_scan_busy(False)
         self.status.setText("Metin taraması başarısız.")
         QMessageBox.warning(self, "Metin tarama", message)
@@ -471,11 +489,17 @@ class TranslationStudio(QDialog):
         if not any(e.translated.strip() for e in self.entries):
             QMessageBox.information(self, "Yama", "Önce en az bir metni çevir.")
             return
+        if self.scan_worker and self.scan_worker.isRunning():
+            QMessageBox.information(self, "Yama", "Metin taraması bitmeden yama oluşturulamaz.")
+            return
+        if self.worker and self.worker.isRunning():
+            QMessageBox.information(self, "Yama", "Çeviri işlemi bitmeden yama oluşturulamaz.")
+            return
         filename, _ = QFileDialog.getSaveFileName(self, "Yama paketini kaydet", f"{self._safe_name(self.game.name)}-tr.zip", "ZIP (*.zip)")
         if not filename:
             return
         try:
-            create_translation_patch(self.game.path, self.entries, filename, self.game.name)
-            QMessageBox.information(self, "Yama oluşturuldu", f"Yama paketi oluşturuldu:\n{filename}\n\nNot: Paket yalnızca desteklenen metin dosyalarını içerir. Oyunun bu dosyaları yüklemesi/etkinleştirmesi oyun motoruna bağlıdır.")
+            created = create_translation_patch(self.game.path, self.entries, filename, self.game.name)
+            QMessageBox.information(self, "Yama oluşturuldu", f"Yama paketi oluşturuldu ve doğrulandı:\n{created}\n\nNot: Paket yalnızca desteklenen metin dosyalarını içerir. Oyunun bu dosyaları yüklemesi/etkinleştirmesi oyun motoruna bağlıdır.")
         except Exception as exc:
             QMessageBox.critical(self, "Yama oluşturma", str(exc))

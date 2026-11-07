@@ -20,8 +20,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Generate Sarman TRANSLATE icon
+        shell: pwsh
+        run: |
+          python tools/build_icon.py
+          if (!(Test-Path "assets/sarman-translate.ico")) { throw "Application icon was not generated." }
+          if ((Get-Item "assets/sarman-translate.ico").Length -lt 1000) { throw "Application icon is unexpectedly small." }
       - name: Build executable
-        run: pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --version-file version_info.txt --collect-all PySide6 --collect-all llama_cpp main.py
+        run: pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --icon assets/sarman-translate.ico --add-data "assets/sarman-translate.ico;assets" --add-data "assets/sarman-translate.svg;assets" --version-file version_info.txt --collect-all PySide6 --collect-all llama_cpp main.py
       - name: Launch packaged Windows app smoke test
         shell: pwsh
         run: |

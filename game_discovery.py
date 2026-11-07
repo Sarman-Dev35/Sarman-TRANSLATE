@@ -19,7 +19,7 @@ class Game:
 def _normal(path: Path) -> str:
     try:
         return os.path.normcase(str(path.resolve()))
-    except OSError:
+    except (OSError, RuntimeError, ValueError):
         return os.path.normcase(os.path.abspath(str(path)))
 
 def _steam_roots() -> set[Path]:
@@ -260,16 +260,43 @@ def _detect_language_files(game_root: Path) -> tuple[str, ...]:
 
 
 def discover_games(extra_roots: Iterable[str] = ()) -> list[Game]:
-    """Discover installed games from local platform manifests and Windows game registrations."""
-    discovered = _scan_steam() + _scan_epic() + _read_game_config_store() + _scan_xbox_games_folder() + _scan_user_game_folders(extra_roots)
+    """Discover installed games while isolating inaccessible or malformed platform records."""
+    discovered: list[Game] = []
+    scanners = (
+        _scan_steam,
+        _scan_epic,
+        _read_game_config_store,
+        _scan_xbox_games_folder,
+        lambda: _scan_user_game_folders(extra_roots),
+    )
+    for scanner in scanners:
+        try:
+            discovered.extend(scanner())
+        except (OSError, RuntimeError, ValueError, TypeError):
+            # A broken library/registry entry must not abort every other source.
+            continue
+
     unique: dict[str, Game] = {}
     priority = ("Steam", "Epic Games", "Microsoft Store", "Xbox", "Windows oyun kaydı")
     for game in discovered:
-        key = _normal(Path(game.path))
+        try:
+            key = _normal(Path(game.path))
+        except (OSError, RuntimeError, ValueError, TypeError):
+            continue
         existing = unique.get(key)
         if existing is None:
             unique[key] = game
         elif any(tag in game.platform for tag in priority) and not any(tag in existing.platform for tag in priority):
             unique[key] = game
-    enriched = [Game(name=x.name, platform=x.platform, path=x.path, app_id=x.app_id, detected_languages=_detect_language_files(Path(x.path))) for x in unique.values()]
+
+    enriched = []
+    for game in unique.values():
+        try:
+            languages = _detect_language_files(Path(game.path))
+        except (OSError, RuntimeError, ValueError, TypeError):
+            languages = ()
+        enriched.append(Game(
+            name=game.name, platform=game.platform, path=game.path,
+            app_id=game.app_id, detected_languages=languages,
+        ))
     return sorted(enriched, key=lambda item: item.name.casefold())

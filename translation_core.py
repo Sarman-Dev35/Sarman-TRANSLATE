@@ -227,10 +227,22 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
     from collections import defaultdict
 
     root = Path(game_dir).resolve()
+    entries = list(entries)
     grouped = defaultdict(list)
-    for entry in entries:
-        if entry.translated.strip() and not validate_translation(entry.source, entry.translated):
-            grouped[entry.file].append(entry)
+    translated_entries = [entry for entry in entries if entry.translated.strip()]
+    invalid_entries = [
+        entry for entry in translated_entries
+        if validate_translation(entry.source, entry.translated)
+    ]
+    if invalid_entries:
+        sample = invalid_entries[0]
+        raise ValueError(
+            f"{len(invalid_entries)} çeviri dışa aktarılamıyor. "
+            f"İlk sorun: {sample.file} · {sample.locator}. "
+            "Değişkenleri ({player_name}, %s vb.) ve satır sonlarını koruyup düzelt."
+        )
+    for entry in translated_entries:
+        grouped[entry.file].append(entry)
     output: dict[str, bytes] = {}
     for relative, items in grouped.items():
         source_path = (root / _safe_workspace_path(relative)).resolve()
@@ -264,7 +276,7 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                         # Backward compatibility for older workspace locator format.
                         locator = item.locator.removeprefix("root").lstrip(".")
                         if not locator:
-                            continue
+                            raise StaleSourceError(f"{relative}: kayıtlı JSON konumu geçersiz. Metinleri yeniden tara.")
                         keys = []
                         token = ""
                         index = 0
@@ -294,11 +306,12 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                     node = data
                     for key in keys[:-1]:
                         node = node[int(key)] if isinstance(node, list) else node[key]
-                    if keys:
-                        last = int(keys[-1]) if isinstance(node, list) else keys[-1]
-                        if node[last] != item.source:
-                            raise StaleSourceError(f"{relative}: kaynak metin taramadan sonra değişmiş. Yeniden tara.")
-                        node[last] = item.translated
+                    if not keys:
+                        raise StaleSourceError(f"{relative}: kayıtlı JSON konumu geçersiz. Metinleri yeniden tara.")
+                    last = int(keys[-1]) if isinstance(node, list) else keys[-1]
+                    if node[last] != item.source:
+                        raise StaleSourceError(f"{relative}: kaynak metin taramadan sonra değişmiş. Yeniden tara.")
+                    node[last] = item.translated
                 # Preserve source indentation, ASCII escaping and final newline.
                 indent_match = re.search(r"\n([ \t]+)[^ \t\r\n]", raw)
                 indent = indent_match.group(1) if indent_match else None
@@ -321,10 +334,13 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                     match = re.fullmatch(r"row\[(\d+)\]\.col\[(\d+)\]", item.locator)
                     if match:
                         ri, ci = map(int, match.groups())
-                        if ri < len(rows) and ci < len(rows[ri]):
-                            if rows[ri][ci] != item.source:
-                                raise StaleSourceError(f"{relative}: kaynak metin taramadan sonra değişmiş. Yeniden tara.")
-                            rows[ri][ci] = item.translated
+                        if ri >= len(rows) or ci >= len(rows[ri]):
+                            raise StaleSourceError(f"{relative}: CSV konumu artık bulunamıyor. Metinleri yeniden tara.")
+                        if rows[ri][ci] != item.source:
+                            raise StaleSourceError(f"{relative}: kaynak metin taramadan sonra değişmiş. Yeniden tara.")
+                        rows[ri][ci] = item.translated
+                    else:
+                        raise StaleSourceError(f"{relative}: kayıtlı CSV konumu geçersiz. Metinleri yeniden tara.")
                 buffer = io.StringIO(newline="")
                 dialect.lineterminator = newline
                 csv.writer(buffer, dialect=dialect).writerows(rows)
@@ -334,13 +350,13 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                 for item in items:
                     locator = item.locator
                     if not locator.startswith("line[") or not locator.endswith("]"):
-                        continue
+                        raise StaleSourceError(f"{relative}: INI konumu geçersiz. Metinleri yeniden tara.")
                     number = locator[5:-1]
                     if not number.isdigit():
-                        continue
+                        raise StaleSourceError(f"{relative}: INI konumu geçersiz. Metinleri yeniden tara.")
                     line_index = int(number)
                     if line_index >= len(lines) or "=" not in lines[line_index]:
-                        continue
+                        raise StaleSourceError(f"{relative}: INI satırı artık bulunamıyor. Metinleri yeniden tara.")
                     key, raw_value = lines[line_index].split("=", 1)
                     leading = raw_value[:len(raw_value) - len(raw_value.lstrip())]
                     trailing = raw_value[len(raw_value.rstrip()):]
@@ -356,19 +372,23 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                 lines = raw.splitlines()
                 for item in items:
                     match = re.fullmatch(r"line\[(\d+)\]", item.locator)
-                    if match and int(match.group(1)) < len(lines):
-                        line_index = int(match.group(1))
-                        if lines[line_index] != item.source:
-                            raise StaleSourceError(f"{relative}: kaynak metin taramadan sonra değişmiş. Yeniden tara.")
-                        lines[line_index] = item.translated
+                    if not match or int(match.group(1)) >= len(lines):
+                        raise StaleSourceError(f"{relative}: TXT satırı artık bulunamıyor. Metinleri yeniden tara.")
+                    line_index = int(match.group(1))
+                    if lines[line_index] != item.source:
+                        raise StaleSourceError(f"{relative}: kaynak metin taramadan sonra değişmiş. Yeniden tara.")
+                    lines[line_index] = item.translated
                 encoded = newline.join(lines) + (newline if raw.endswith(("\n", "\r")) else "")
             else:
-                continue
+                raise ValueError(f"{relative}: bu dosya biçimi yama dışa aktarımı için desteklenmiyor.")
             output[relative] = (b"\xef\xbb\xbf" if had_bom else b"") + encoded.encode("utf-8")
         except StaleSourceError:
             raise
-        except (ValueError, KeyError, IndexError, TypeError, csv.Error):
-            continue
+        except (ValueError, KeyError, IndexError, TypeError, csv.Error) as exc:
+            raise StaleSourceError(
+                f"{relative}: çeviri dosyaya güvenli biçimde aktarılamadı ({exc}). "
+                "Metinleri yeniden tara ve ilgili satırları kontrol et."
+            ) from exc
     return output
 
 
@@ -385,7 +405,10 @@ def create_translation_patch(game_dir: str | Path, entries: Iterable[TextEntry],
 
     files = build_translated_files(game_dir, entries)
     if not files:
-        raise ValueError("Desteklenen biçimlerde dışa aktarılabilir çevrilmiş dosya bulunamadı.")
+        raise ValueError(
+            "Yama oluşturulamadı: desteklenen JSON, CSV, INI veya TXT dosyalarında "
+            "geçerli bir çeviri bulunamadı. Önce metinleri tara ve en az bir çeviriyi tamamla."
+        )
     manifest_files = []
     for relative in sorted(files):
         manifest_files.append({"source": f"files/{relative}", "target": relative})
@@ -398,9 +421,21 @@ def create_translation_patch(game_dir: str | Path, entries: Iterable[TextEntry],
         "files": manifest_files,
     }
     destination = Path(destination)
+    if destination.suffix.casefold() != ".zip":
+        destination = destination.with_suffix(".zip")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
-        archive.writestr("sarman-patch.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-        for relative, content in files.items():
-            archive.writestr(f"files/{relative}", content)
+    temporary = destination.with_name(destination.name + ".tmp")
+    try:
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
+            archive.writestr("sarman-patch.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+            for relative, content in files.items():
+                archive.writestr(f"files/{relative}", content)
+        with zipfile.ZipFile(temporary, "r") as archive:
+            bad_member = archive.testzip()
+            if bad_member:
+                raise ValueError(f"Oluşturulan yama doğrulanamadı: {bad_member}")
+        os.replace(temporary, destination)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
     return destination
