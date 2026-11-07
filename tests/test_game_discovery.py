@@ -45,7 +45,7 @@ class GameDiscoveryTests(unittest.TestCase):
             (locale / "en-US.json").write_text('{"hello":"Hello"}', encoding="utf-8")
             (locale / "ar.json").write_text('{"hello":"مرحبا"}', encoding="utf-8")
             (locale / "id.json").write_text('{"hello":"Halo"}', encoding="utf-8")
-            (root / "Data").mkdir()
+            (root / "Data").mkdir(exist_ok=True)
             (root / "Data" / "strings.hi.json").write_text('{"hello":"नमस्ते"}', encoding="utf-8")
             self.assertEqual(_detect_language_files(root), ("AR", "EN", "HI", "ID", "TR"))
 
