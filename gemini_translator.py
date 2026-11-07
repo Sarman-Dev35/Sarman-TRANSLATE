@@ -65,6 +65,12 @@ def _generate(api_key: str, model: str, prompt: str, json_mode: bool = False) ->
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:1200]
             retry_after = exc.headers.get("Retry-After")
+            if exc.code == 400 and json_mode and any(
+                token in detail.casefold() for token in ("responsemimetype", "application/json", "json mode")
+            ):
+                # Some generateContent models do not expose JSON response mode.
+                # The prompt still requires strict JSON, which translate_batch validates.
+                return _generate(api_key, model, prompt, json_mode=False)
             quota = exc.code == 429 or "RESOURCE_EXHAUSTED" in detail
             if exc.code in (408, 500, 502, 503, 504) and attempt < 2:
                 time.sleep(_retry_delay(retry_after, attempt))
