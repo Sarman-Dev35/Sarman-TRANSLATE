@@ -5,7 +5,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
+from urllib.parse import urlencode
 
 from quota_testing import set_quota_test, quota_test_remaining, clear_quota_test
 
@@ -31,18 +31,33 @@ class ModelFetchWorker(QThread):
 
     def run(self):
         try:
-            request = urllib.request.Request(
-                MODELS_URL,
-                headers={"x-goog-api-key": self.api_key, "Accept": "application/json"},
-                method="GET",
-            )
-            with urllib.request.urlopen(request, timeout=15) as response:
-                data = json.loads(response.read().decode("utf-8"))
-            models = [
-                model for model in data.get("models", [])
-                if "generateContent" in model.get("supportedGenerationMethods", [])
-            ]
-            models.sort(key=lambda model: model.get("name", ""))
+            models = []
+            page_token = None
+            # ListModels is paginated; do not silently hide models after the first page.
+            for _ in range(10):
+                params = {"pageSize": 100}
+                if page_token:
+                    params["pageToken"] = page_token
+                request = urllib.request.Request(
+                    f"{MODELS_URL}?{urlencode(params)}",
+                    headers={"x-goog-api-key": self.api_key, "Accept": "application/json"},
+                    method="GET",
+                )
+                with urllib.request.urlopen(request, timeout=15) as response:
+                    data = json.loads(response.read().decode("utf-8"))
+                if not isinstance(data, dict):
+                    raise ValueError("Google API model listesi beklenen biçimde değil.")
+                models.extend(
+                    model for model in data.get("models", [])
+                    if isinstance(model, dict)
+                    and isinstance(model.get("name"), str)
+                    and "generateContent" in model.get("supportedGenerationMethods", [])
+                )
+                page_token = data.get("nextPageToken")
+                if not page_token:
+                    break
+            deduplicated = {model["name"]: model for model in models}
+            models = sorted(deduplicated.values(), key=lambda model: model["name"])
             self.completed.emit(models)
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:500]
@@ -206,17 +221,30 @@ class GeminiSettingsDialog(QDialog):
         self.model_worker.start()
 
     def models_loaded(self, models):
+        try:
+            saved_model = keyring.get_password(SERVICE, "model")
+        except Exception:
+            saved_model = None
+        self.model_combo.blockSignals(True)
         self.model_combo.clear()
         for model in models:
             name = model.get("name", "").removeprefix("models/")
             self.model_combo.addItem(f"{name}  ·  {model.get('displayName', name)}", name)
-        preferred = self.model_combo.findData("gemini-2.5-flash")
+        preferred = self.model_combo.findData(saved_model) if saved_model else -1
+        if preferred < 0:
+            preferred = next(
+                (i for i in range(self.model_combo.count())
+                 if "flash" in str(self.model_combo.itemData(i)).casefold()
+                 and not any(tag in str(self.model_combo.itemData(i)).casefold() for tag in ("preview", "experimental"))),
+                0 if self.model_combo.count() else -1,
+            )
         if preferred >= 0:
             self.model_combo.setCurrentIndex(preferred)
+        self.model_combo.blockSignals(False)
         self.save_model_choice()
         self.api_status.setText(
-            f"Bağlantı başarılı. {len(models)} metin üretimi destekleyen model listelendi. "
-            "Modelin listelenmesi ücretsiz kullanım garantisi değildir; erişim ve kota Google projesine göre değişir."
+            f"API anahtarı doğrulandı. {len(models)} generateContent modeli listelendi. "
+            "Bu kontrol gerçek çeviri isteği göndermez; model erişimi, JSON yanıt desteği ve ücretsiz kota ayrıca değişebilir."
         )
         self.test_btn.setEnabled(True)
 
