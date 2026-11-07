@@ -236,7 +236,7 @@ class GameArtService(QObject):
             if not image.save(str(cache_path), "JPG", 94):
                 return
             self.cover_ready.emit(path, image)
-        except (ValueError, OSError, TypeError, KeyError, StopIteration):
+        except (ValueError, OSError, TypeError, KeyError, StopIteration, AttributeError):
             # Missing/invalid artwork is non-fatal: the designed placeholder remains.
             return
         finally:
