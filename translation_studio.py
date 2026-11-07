@@ -34,21 +34,41 @@ class TranslateWorker(QThread):
     def run(self):
         total = len(self.indices)
         completed = 0
+        groups: dict[str, list[int]] = {}
+        memory: dict[str, str] = {}
+        for entry in self.entries:
+            if entry.translated.strip() and not validate_translation(entry.source, entry.translated):
+                memory.setdefault(entry.source, entry.translated)
+        for index in self.indices:
+            groups.setdefault(self.entries[index].source, []).append(index)
+        pending = []
+        for source, indices in groups.items():
+            if source in memory:
+                for index in indices:
+                    self.row_done.emit(index, memory[source])
+                completed += len(indices)
+                self.progress.emit(completed, total, source[:80])
+            else:
+                pending.append((source, indices))
         batch_size = 5
-        for offset in range(0, total, batch_size):
-            chunk = self.indices[offset:offset + batch_size]
-            payload = [(str(index), self.entries[index].source) for index in chunk]
+        for offset in range(0, len(pending), batch_size):
+            chunk = pending[offset:offset + batch_size]
+            payload = [(str(indices[0]), source) for source, indices in chunk]
             try:
                 translated = translate_batch(self.api_key, self.model, payload)
-                for index in chunk:
-                    self.row_done.emit(index, translated[str(index)])
-                completed += len(chunk)
-                self.progress.emit(completed, total, self.entries[chunk[-1]].source[:80])
+                for source, indices in chunk:
+                    result = translated[str(indices[0])]
+                    memory[source] = result
+                    for index in indices:
+                        self.row_done.emit(index, result)
+                    completed += len(indices)
+                    self.progress.emit(completed, total, source[:80])
             except GeminiTranslationError as exc:
                 if exc.quota:
                     self.paused.emit(str(exc))
                 else:
-                    first = self.entries[chunk[0]]
+                    source, indices = chunk[0]
+                    first = self.entries[indices[0]]
                     self.failed.emit(f"{first.file} · {first.locator}: {exc}")
                 return
         self.completed.emit()
