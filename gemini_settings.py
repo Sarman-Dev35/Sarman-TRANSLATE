@@ -234,7 +234,7 @@ class GeminiSettingsDialog(QDialog):
             self.countdown.setText("Komut tanınmadı. Komutları aynen yazıp tekrar dene.")
             return
         self.deadline = datetime.now(timezone.utc) + timedelta(seconds=seconds)
-        self.countdown.setText("TEST MODU — Gemini API kotası doldu. Çeviri duraklatıldı. Yeni API ekleyebilir veya yenilenmeyi bekleyebilirsin.")
+        self.countdown.setText("TEST MODU — Çeviri geçici olarak duraklatıldı. Çalışman güvende; tamamlanan ilerleme kaydedildi. Yeni bir API anahtarı ekleyebilir veya bekleyebilirsin.")
         self.timer.start()
         self.update_countdown()
         self.command_input.clear()
@@ -246,9 +246,9 @@ class GeminiSettingsDialog(QDialog):
         hours, remainder = divmod(remaining, 3600)
         minutes, seconds = divmod(remainder, 60)
         self.countdown.setText(
-            f"TEST MODU — Kota yenilenmesine kalan süre: {hours:02d}:{minutes:02d}:{seconds:02d}"
+            f"TEST MODU — Çeviriye devam etmeden önce tahmini bekleme süresi: {hours:02d}:{minutes:02d}:{seconds:02d}"
         )
         if remaining <= 0:
             self.timer.stop()
-            self.countdown.setText("TEST TAMAMLANDI — Simüle edilen kota süresi doldu. Gerçek API kotası etkilenmedi.")
+            self.countdown.setText("TEST TAMAMLANDI — Bekleme süresi sona erdi. Çeviriye devam etme davranışını şimdi test edebilirsin. Gerçek API kotası etkilenmedi.")
             self.deadline = None
