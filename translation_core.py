@@ -94,10 +94,12 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
                 rows = list(csv.reader(io.StringIO(text, newline="")))
                 if rows:
                     header = [x.casefold().strip() for x in rows[0]]
-                    text_cols = [i for i, h in enumerate(header) if any(k in h for k in ("text", "value", "string", "dialog", "description", "message", "translation", "english", "source"))]
-                    has_header = bool(text_cols) or any(h in {"id", "key", "identifier", "name"} for h in header)
+                    preferred_names = {"en", "english", "source", "original", "text", "value", "string", "dialog", "dialogue", "description", "message"}
+                    text_cols = [i for i, name in enumerate(header) if name in preferred_names or any(token in name for token in ("english", "source", "original", "dialogue", "description"))]
+                    has_header = bool(text_cols) or any(name in {"id", "key", "identifier", "translation", "target"} for name in header)
                     if not text_cols:
-                        text_cols = [i for i, h in enumerate(header) if h not in {"id", "key", "identifier"}] if has_header else list(range(min(len(rows[0]), 8)))
+                        candidates = [i for i, name in enumerate(header) if name not in {"id", "key", "identifier", "translation", "target"}]
+                        text_cols = candidates[:1] if has_header else list(range(min(len(rows[0]), 8)))
                     start = 1 if has_header else 0
                     for ri, row in enumerate(rows[start:], start=start):
                         for ci in text_cols:
