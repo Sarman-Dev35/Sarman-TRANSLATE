@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from contextlib import closing
 import json
 import os
 import re
@@ -134,7 +135,7 @@ def _cache_get(source: str, context: str = "", game_name: str = "") -> str | Non
     if not path.exists():
         return None
     try:
-        with sqlite3.connect(path, timeout=5) as db:
+        with closing(sqlite3.connect(path, timeout=5)) as db:
             row = db.execute(
                 "SELECT translated FROM memory WHERE source_hash=?",
                 (_cache_key(source, context, game_name),),
@@ -147,7 +148,7 @@ def _cache_get(source: str, context: str = "", game_name: str = "") -> str | Non
 def _cache_put(source: str, translated: str, context: str = "", game_name: str = "") -> None:
     path = _cache_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path, timeout=10) as db:
+    with closing(sqlite3.connect(path, timeout=10)) as db:
         db.execute(
             "CREATE TABLE IF NOT EXISTS memory (source_hash TEXT PRIMARY KEY, source TEXT NOT NULL, translated TEXT NOT NULL)"
         )
@@ -156,6 +157,7 @@ def _cache_put(source: str, translated: str, context: str = "", game_name: str =
             "ON CONFLICT(source_hash) DO UPDATE SET source=excluded.source, translated=excluded.translated",
             (_cache_key(source, context, game_name), source, translated),
         )
+        db.commit()
 
 
 def _get_model():
