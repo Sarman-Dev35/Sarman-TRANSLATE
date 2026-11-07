@@ -128,7 +128,11 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
 
                     walk(data)
                 elif suffix == ".csv":
-                    rows = list(csv.reader(io.StringIO(text, newline="")))
+                    try:
+                        dialect = csv.Sniffer().sniff(text[:8192], delimiters=",;\t|")
+                    except csv.Error:
+                        dialect = csv.excel
+                    rows = list(csv.reader(io.StringIO(text, newline=""), dialect=dialect))
                     if rows:
                         header = [x.casefold().strip() for x in rows[0]]
                         id_names = {"id", "key", "identifier", "translation", "target"}
@@ -300,6 +304,8 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                 indent = indent_match.group(1) if indent_match else None
                 ensure_ascii = bool(re.search(r"\\u[0-9a-fA-F]{4}", raw)) and not any(ord(ch) > 127 for ch in raw)
                 compact = "\n" not in raw and not re.search(r":\s|,\s", raw)
+                separators = (",", ":") if compact else None
+                encoded = json.dumps(data, ensure_ascii=ensure_ascii, indent=indent, separators=separators)
                 if newline != "\n":
                     encoded = encoded.replace("\n", newline)
                 if raw.endswith(("\n", "\r")):
