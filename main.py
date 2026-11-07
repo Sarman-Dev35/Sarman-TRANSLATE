@@ -8,15 +8,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
-    QMessageBox, QPushButton, QProgressBar, QTableWidget, QTableWidgetItem,
-    QVBoxLayout, QWidget, QHeaderView
+    QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
+    QMainWindow, QMessageBox, QPushButton, QProgressBar, QTableWidget,
+    QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QTabWidget
 )
 
+from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest
+
 APP_NAME = "Sarman TRANSLATE"
-ACCENT = "#a78bfa"
+ACCENT = "#e58a43"
 
 
 @dataclass
@@ -40,9 +42,8 @@ def steam_roots() -> set[Path]:
             config = steam / "steamapps" / "libraryfolders.vdf"
             if config.exists():
                 try:
-                    text = config.read_text(encoding="utf-8", errors="ignore")
-                    for value in re.findall(r'"path"\s*"([^"]+)"', text):
-                        roots.add(Path(value.replace("\\\\", "\\")))
+                    content = config.read_text(encoding="utf-8", errors="ignore")
+                    roots.update(Path(v.replace("\\\\", "\\")) for v in re.findall(r'"path"\s*"([^"]+)"', content))
                 except OSError:
                     pass
     return roots
@@ -52,18 +53,16 @@ def scan_steam() -> list[Game]:
     found = []
     for root in steam_roots():
         apps = root / "steamapps"
-        if not apps.is_dir():
-            continue
         for manifest in apps.glob("appmanifest_*.acf"):
             try:
-                text = manifest.read_text(encoding="utf-8", errors="ignore")
-                name = re.search(r'"name"\s*"([^"]+)"', text)
-                appid = re.search(r'"appid"\s*"?(\d+)"?', text)
-                install = re.search(r'"installdir"\s*"([^"]+)"', text)
+                content = manifest.read_text(encoding="utf-8", errors="ignore")
+                name = re.search(r'"name"\s*"([^"]+)"', content)
+                appid = re.search(r'"appid"\s*"?(\d+)"?', content)
+                install = re.search(r'"installdir"\s*"([^"]+)"', content)
                 if name and install:
-                    game_path = apps / "common" / install.group(1)
-                    if game_path.is_dir():
-                        found.append(Game(name.group(1), "Steam", str(game_path), appid.group(1) if appid else ""))
+                    folder = apps / "common" / install.group(1)
+                    if folder.is_dir():
+                        found.append(Game(name.group(1), "Steam", str(folder), appid.group(1) if appid else ""))
             except OSError:
                 continue
     return found
@@ -71,67 +70,52 @@ def scan_steam() -> list[Game]:
 
 def scan_epic() -> list[Game]:
     found = []
-    program_data = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))
-    manifests = program_data / "Epic" / "EpicGamesLauncher" / "Data" / "Manifests"
-    if not manifests.is_dir():
-        return found
-    for item in manifests.glob("*.item"):
-        try:
-            data = json.loads(item.read_text(encoding="utf-8"))
-            location = Path(data.get("InstallLocation", ""))
-            name = data.get("DisplayName") or data.get("AppName") or location.name
-            if location.is_dir():
-                found.append(Game(name, "Epic Games", str(location), data.get("AppName", "")))
-        except (OSError, json.JSONDecodeError, TypeError):
-            continue
+    manifests = Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData")) / "Epic/EpicGamesLauncher/Data/Manifests"
+    if manifests.is_dir():
+        for item in manifests.glob("*.item"):
+            try:
+                data = json.loads(item.read_text(encoding="utf-8"))
+                folder = Path(data.get("InstallLocation", ""))
+                if folder.is_dir():
+                    found.append(Game(data.get("DisplayName") or data.get("AppName") or folder.name,
+                                      "Epic Games", str(folder), data.get("AppName", "")))
+            except (OSError, json.JSONDecodeError, TypeError):
+                continue
     return found
 
 
 def scan_common_folders() -> list[Game]:
-    found = []
-    bases = [
-        Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")),
-        Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")),
-        Path("D:/Games"), Path("D:/Oyunlar"), Path.home() / "Games",
-    ]
-    skip = {"common files", "windowsapps", "windows defender", "internet explorer"}
-    seen = set()
+    found, seen = [], set()
+    bases = [Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")),
+             Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")),
+             Path("D:/Games"), Path("D:/Oyunlar"), Path.home() / "Games"]
+    excluded = ("unins", "uninstall", "setup", "redist", "crashreport")
     for base in bases:
         if not base.is_dir():
             continue
         try:
             for child in base.iterdir():
-                if not child.is_dir() or child.name.casefold() in skip:
+                if not child.is_dir() or child.name.casefold() in {"common files", "windowsapps"}:
                     continue
-                # Avoid presenting every application folder as a game: require
-                # at least one likely game executable in the install directory.
                 try:
-                    executables = [
-                        exe for exe in child.glob("*.exe")
-                        if not any(token in exe.name.casefold() for token in
-                                   ("unins", "uninstall", "setup", "redist", "crashreport"))
-                    ]
+                    has_game_exe = any(exe.is_file() and not any(x in exe.name.casefold() for x in excluded)
+                                       for exe in child.glob("*.exe"))
                 except OSError:
                     continue
-                if not executables:
-                    continue
-                key = str(child.resolve()).casefold()
-                if key not in seen:
+                key = os.path.normcase(str(child.resolve()))
+                if has_game_exe and key not in seen:
                     seen.add(key)
                     found.append(Game(child.name, "Oyun klasörü", str(child)))
-        except (OSError, PermissionError):
+        except OSError:
             continue
     return found
 
 
 def discover_games() -> list[Game]:
-    all_games = scan_steam() + scan_epic() + scan_common_folders()
     unique = {}
-    for game in all_games:
-        key = os.path.normcase(os.path.abspath(game.path))
-        if key not in unique:
-            unique[key] = game
-    return sorted(unique.values(), key=lambda g: g.name.casefold())
+    for game in scan_steam() + scan_epic() + scan_common_folders():
+        unique.setdefault(os.path.normcase(os.path.abspath(game.path)), game)
+    return sorted(unique.values(), key=lambda item: item.name.casefold())
 
 
 class ScanWorker(QThread):
@@ -145,76 +129,131 @@ class ScanWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class StatCard(QFrame):
+    def __init__(self, caption: str, value: str):
+        super().__init__()
+        self.setObjectName("statCard")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(17, 13, 17, 13)
+        label = QLabel(caption.upper())
+        label.setObjectName("eyebrow")
+        self.value = QLabel(value)
+        self.value.setObjectName("statValue")
+        layout.addWidget(label)
+        layout.addWidget(self.value)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.resize(1120, 720)
-        self.setMinimumSize(850, 560)
+        self.resize(1180, 760)
+        self.setMinimumSize(900, 620)
         self.games: list[Game] = []
         self.worker = None
+        self.patch_path: str | None = None
         self.build_ui()
         self.apply_style()
 
     def build_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
-        root = QVBoxLayout(central)
-        root.setContentsMargins(28, 24, 28, 22)
-        root.setSpacing(18)
+        shell = QHBoxLayout(central)
+        shell.setContentsMargins(0, 0, 0, 0)
+        shell.setSpacing(0)
 
-        top = QHBoxLayout()
-        brand = QVBoxLayout()
-        title = QLabel("SARMAN <span style='color:#a78bfa'>TRANSLATE</span>")
-        title.setTextFormat(Qt.RichText)
-        title.setObjectName("brand")
-        subtitle = QLabel("AI destekli oyun yerelleştirme aracı")
-        subtitle.setObjectName("muted")
-        brand.addWidget(title)
-        brand.addWidget(subtitle)
-        top.addLayout(brand)
-        top.addStretch()
-        self.scan_btn = QPushButton("⌕   Oyunları Tara")
+        sidebar = QFrame()
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(218)
+        side = QVBoxLayout(sidebar)
+        side.setContentsMargins(20, 25, 20, 20)
+        side.setSpacing(12)
+        brand = QLabel("SARMAN")
+        brand.setObjectName("brand")
+        brand2 = QLabel("TRANSLATE")
+        brand2.setObjectName("brandSub")
+        side.addWidget(brand)
+        side.addWidget(brand2)
+        side.addSpacing(24)
+        nav_title = QLabel("ÇALIŞMA ALANI")
+        nav_title.setObjectName("eyebrow")
+        side.addWidget(nav_title)
+        self.nav_library = QPushButton("▦   Oyun kütüphanesi")
+        self.nav_patch = QPushButton("⇧   Yama merkezi")
+        self.nav_library.setObjectName("navActive")
+        self.nav_patch.setObjectName("navButton")
+        self.nav_library.clicked.connect(lambda: self.pages.setCurrentIndex(0))
+        self.nav_patch.clicked.connect(lambda: self.pages.setCurrentIndex(1))
+        side.addWidget(self.nav_library)
+        side.addWidget(self.nav_patch)
+        side.addStretch()
+        version = QLabel("DESKTOP  ·  ÖN SÜRÜM\nYerelleştirme araçları")
+        version.setObjectName("sideFoot")
+        side.addWidget(version)
+        shell.addWidget(side)
+
+        content = QWidget()
+        content.setObjectName("content")
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(30, 25, 30, 22)
+        layout.setSpacing(18)
+        header = QHBoxLayout()
+        heading = QVBoxLayout()
+        self.page_title = QLabel("Oyun kütüphanesi")
+        self.page_title.setObjectName("pageTitle")
+        self.page_subtitle = QLabel("Kurulu oyunlarını bul ve yerelleştirme çalışmalarını yönet.")
+        self.page_subtitle.setObjectName("muted")
+        heading.addWidget(self.page_title)
+        heading.addWidget(self.page_subtitle)
+        header.addLayout(heading)
+        header.addStretch()
+        self.scan_btn = QPushButton("⟳   Oyunları tara")
         self.scan_btn.setObjectName("primary")
         self.scan_btn.clicked.connect(self.start_scan)
-        top.addWidget(self.scan_btn)
-        root.addLayout(top)
+        header.addWidget(self.scan_btn)
+        layout.addLayout(header)
 
+        self.pages = QTabWidget()
+        self.pages.setDocumentMode(True)
+        self.pages.tabBar().hide()
+        self.pages.currentChanged.connect(self.page_changed)
+        layout.addWidget(self.pages, 1)
+
+        library = QWidget()
+        lib = QVBoxLayout(library)
+        lib.setContentsMargins(0, 0, 0, 0)
         hero = QFrame()
         hero.setObjectName("hero")
-        hero_layout = QVBoxLayout(hero)
-        hero_layout.setContentsMargins(22, 18, 22, 18)
-        eyebrow = QLabel("İLK ADIM  /  OYUN KÜTÜPHANESİ")
+        h = QVBoxLayout(hero)
+        h.setContentsMargins(23, 20, 23, 20)
+        eyebrow = QLabel("SARMAN  /  GAME LIBRARY")
         eyebrow.setObjectName("eyebrow")
-        hero_layout.addWidget(eyebrow)
-        hero_title = QLabel("Oyunlarını keşfet.")
-        hero_title.setObjectName("heroTitle")
-        hero_layout.addWidget(hero_title)
-        hero_text = QLabel("Steam ve Epic Games kurulumlarını, ayrıca yaygın oyun klasörlerini bul. Bu sürüm yalnızca okuma ve keşif yapar; oyun dosyalarını değiştirmez.")
-        hero_text.setObjectName("muted")
-        hero_text.setWordWrap(True)
-        hero_layout.addWidget(hero_text)
-        root.addWidget(hero)
-
+        title = QLabel("Oyunlarını keşfet.")
+        title.setObjectName("heroTitle")
+        desc = QLabel("Kütüphaneni tara, oyununu seç ve kullanmak istediğin Türkçe yamayı güvenli biçimde yönet. Tarama sırasında oyun dosyalarına dokunulmaz.")
+        desc.setObjectName("muted")
+        desc.setWordWrap(True)
+        h.addWidget(eyebrow)
+        h.addWidget(title)
+        h.addWidget(desc)
+        lib.addWidget(hero)
         stats = QHBoxLayout()
-        self.count_card = self.make_stat("BULUNAN OYUN", "0")
-        self.source_card = self.make_stat("TARAMA KAYNAĞI", "Steam · Epic · Klasörler")
-        stats.addWidget(self.count_card)
-        stats.addWidget(self.source_card, 2)
-        root.addLayout(stats)
-
+        self.game_count = StatCard("Bulunan oyun", "0")
+        self.source_count = StatCard("Tarama kaynakları", "Steam  ·  Epic  ·  Klasörler")
+        stats.addWidget(self.game_count)
+        stats.addWidget(self.source_count, 2)
+        lib.addLayout(stats)
         row = QHBoxLayout()
-        section = QLabel("Bulunan oyunlar")
-        section.setObjectName("section")
-        row.addWidget(section)
+        label = QLabel("Oyun listen")
+        label.setObjectName("sectionTitle")
+        row.addWidget(label)
         row.addStretch()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Oyun ara…")
-        self.search.setMaximumWidth(280)
+        self.search.setPlaceholderText("Oyun veya klasör ara…")
+        self.search.setMaximumWidth(300)
         self.search.textChanged.connect(self.render_games)
         row.addWidget(self.search)
-        root.addLayout(row)
-
+        lib.addLayout(row)
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["OYUN", "KAYNAK", "KURULUM KONUMU"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -223,67 +262,124 @@ class MainWindow(QMainWindow):
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SingleSelection)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.table.setAlternatingRowColors(False)
-        root.addWidget(self.table, 1)
+        self.table.itemSelectionChanged.connect(self.selection_changed)
+        lib.addWidget(self.table, 1)
+        self.library_status = QLabel("Hazır · Henüz tarama yapılmadı")
+        self.library_status.setObjectName("muted")
+        lib.addWidget(self.library_status)
+        self.pages.addTab(library, "Kütüphane")
 
-        bottom = QHBoxLayout()
-        self.status = QLabel("Hazır · Tarama başlatılmadı")
-        self.status.setObjectName("muted")
-        bottom.addWidget(self.status)
-        bottom.addStretch()
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 1)
-        self.progress.setValue(0)
-        self.progress.setFixedWidth(150)
-        self.progress.hide()
-        bottom.addWidget(self.progress)
-        root.addLayout(bottom)
-
-    def make_stat(self, label, value):
-        card = QFrame()
-        card.setObjectName("stat")
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(16, 12, 16, 12)
-        a = QLabel(label)
-        a.setObjectName("eyebrow")
-        b = QLabel(value)
-        b.setObjectName("statValue")
-        layout.addWidget(a)
-        layout.addWidget(b)
-        card.value_label = b
-        return card
+        patch_page = QWidget()
+        patch_layout = QVBoxLayout(patch_page)
+        patch_layout.setContentsMargins(0, 0, 0, 0)
+        patch_hero = QFrame()
+        patch_hero.setObjectName("hero")
+        ph = QVBoxLayout(patch_hero)
+        ph.setContentsMargins(23, 20, 23, 20)
+        eyebrow2 = QLabel("SARMAN  /  PATCH CENTER")
+        eyebrow2.setObjectName("eyebrow")
+        patch_title = QLabel("Hazır yamayı yükle.")
+        patch_title.setObjectName("heroTitle")
+        patch_desc = QLabel("Başka bir yerden indirdiğin uyumlu Sarman yama paketini seç, hedef oyunu belirle ve yükle. Uygulama mevcut dosyaların yedeğini alır; desteklenen yamalar geri alınabilir.")
+        patch_desc.setObjectName("muted")
+        patch_desc.setWordWrap(True)
+        ph.addWidget(eyebrow2)
+        ph.addWidget(patch_title)
+        ph.addWidget(patch_desc)
+        patch_layout.addWidget(patch_hero)
+        package = QFrame()
+        package.setObjectName("panel")
+        pl = QVBoxLayout(package)
+        pl.setContentsMargins(20, 18, 20, 18)
+        pl.addWidget(QLabel("1  /  YAMA PAKETİ"))
+        self.patch_file_label = QLabel("Henüz bir yama paketi seçilmedi.")
+        self.patch_file_label.setObjectName("muted")
+        self.patch_file_label.setWordWrap(True)
+        pl.addWidget(self.patch_file_label)
+        self.choose_patch_btn = QPushButton("Yama dosyası seç (.zip)")
+        self.choose_patch_btn.clicked.connect(self.choose_patch)
+        pl.addWidget(self.choose_patch_btn, 0, Qt.AlignLeft)
+        self.patch_info = QLabel("Paket seçildiğinde adı, sürümü ve dosya sayısı burada görünür.")
+        self.patch_info.setObjectName("muted")
+        pl.addWidget(self.patch_info)
+        patch_layout.addWidget(package)
+        target = QFrame()
+        target.setObjectName("panel")
+        tl = QVBoxLayout(target)
+        tl.setContentsMargins(20, 18, 20, 18)
+        tl.addWidget(QLabel("2  /  HEDEF OYUN"))
+        self.target_label = QLabel("Önce Oyun kütüphanesi bölümünden bir oyun seç.")
+        self.target_label.setObjectName("muted")
+        self.target_label.setWordWrap(True)
+        tl.addWidget(self.target_label)
+        actions = QHBoxLayout()
+        self.install_btn = QPushButton("Yamayı yükle")
+        self.install_btn.setObjectName("primary")
+        self.install_btn.setEnabled(False)
+        self.install_btn.clicked.connect(self.apply_patch)
+        self.uninstall_btn = QPushButton("Son yamayı geri al")
+        self.uninstall_btn.clicked.connect(self.rollback_patch)
+        actions.addWidget(self.install_btn)
+        actions.addWidget(self.uninstall_btn)
+        actions.addStretch()
+        tl.addLayout(actions)
+        patch_layout.addWidget(target)
+        warning = QLabel("Güvenlik: Yalnızca bu uygulamanın manifestli yama paketleri kabul edilir. Yüklemeden önce hedefleri doğrula; oyun çevrimiçi/anti-cheat korumalıysa dosya yaması uygulama.")
+        warning.setObjectName("warning")
+        warning.setWordWrap(True)
+        patch_layout.addWidget(warning)
+        patch_layout.addStretch()
+        self.pages.addTab(patch_page, "Yama merkezi")
+        shell.addWidget(content, 1)
 
     def apply_style(self):
         self.setStyleSheet("""
-            QMainWindow, QWidget { background:#0b0b10; color:#f2f0f8; font-family:'Segoe UI'; font-size:13px; }
-            QLabel#brand { font-size:23px; font-weight:800; letter-spacing:1px; }
-            QLabel#muted { color:#92909f; }
-            QLabel#eyebrow { color:#a78bfa; font-size:10px; font-weight:700; letter-spacing:1.5px; }
-            QFrame#hero { background:#15141e; border:1px solid #292638; border-radius:14px; }
-            QLabel#heroTitle { font-size:25px; font-weight:700; padding:3px 0; }
-            QFrame#stat { background:#12121a; border:1px solid #252431; border-radius:12px; }
-            QLabel#statValue { font-size:17px; font-weight:700; padding-top:3px; }
-            QLabel#section { font-size:17px; font-weight:700; }
-            QPushButton { background:#1a1923; border:1px solid #302d3d; border-radius:9px; padding:11px 16px; font-weight:600; }
-            QPushButton:hover { border-color:#a78bfa; background:#211e2e; }
-            QPushButton#primary { background:#a78bfa; color:#171321; border:0; padding:12px 20px; }
-            QPushButton#primary:hover { background:#b9a5ff; }
-            QLineEdit { background:#12121a; border:1px solid #302d3d; border-radius:8px; padding:10px 12px; color:#fff; }
-            QLineEdit:focus { border-color:#a78bfa; }
-            QTableWidget { background:#101017; border:1px solid #252431; border-radius:10px; padding:6px; selection-background-color:#29233c; }
-            QHeaderView::section { background:#15141e; color:#8f8b9d; border:0; padding:12px 8px; font-size:10px; font-weight:700; }
-            QTableWidget::item { padding:9px 8px; border-bottom:1px solid #22212b; }
-            QProgressBar { border:0; background:#242230; border-radius:4px; height:7px; text-align:center; }
-            QProgressBar::chunk { background:#a78bfa; border-radius:4px; }
+            QWidget { background:#0c0d10; color:#eeeae5; font-family:'Segoe UI'; font-size:13px; }
+            QFrame#sidebar { background:#101115; border-right:1px solid #24252a; }
+            QLabel#brand { font-size:24px; font-weight:900; letter-spacing:2px; color:#f4f0eb; }
+            QLabel#brandSub { color:#e58a43; font-size:11px; font-weight:800; letter-spacing:3px; }
+            QLabel#sideFoot { color:#777a82; font-size:10px; line-height:1.5; }
+            QLabel#eyebrow { color:#e58a43; font-size:10px; font-weight:800; letter-spacing:1.7px; }
+            QLabel#pageTitle { font-size:23px; font-weight:750; }
+            QLabel#muted { color:#92949c; }
+            QLabel#heroTitle { font-size:27px; font-weight:750; padding:3px 0; }
+            QLabel#sectionTitle { font-size:17px; font-weight:700; }
+            QFrame#hero { background:#17181d; border:1px solid #303137; border-radius:13px; }
+            QFrame#statCard, QFrame#panel { background:#141519; border:1px solid #292a30; border-radius:11px; }
+            QLabel#statValue { font-size:17px; font-weight:700; padding-top:4px; }
+            QPushButton { background:#1a1b20; border:1px solid #34353c; border-radius:8px; padding:10px 14px; font-weight:650; }
+            QPushButton:hover { border-color:#e58a43; background:#24201c; }
+            QPushButton:disabled { color:#666870; background:#17181c; border-color:#292a30; }
+            QPushButton#primary { background:#e58a43; color:#1a120c; border:0; padding:11px 17px; font-weight:800; }
+            QPushButton#primary:hover { background:#f09a55; }
+            QPushButton#navButton, QPushButton#navActive { text-align:left; padding:12px 11px; border:0; }
+            QPushButton#navButton { background:transparent; color:#a2a3aa; }
+            QPushButton#navActive { background:#292019; color:#f0a36a; border-left:3px solid #e58a43; }
+            QLineEdit { background:#141519; border:1px solid #303138; border-radius:8px; padding:10px 12px; color:#fff; }
+            QLineEdit:focus { border-color:#e58a43; }
+            QTableWidget { background:#111216; border:1px solid #292a30; border-radius:10px; padding:5px; selection-background-color:#35271d; }
+            QHeaderView::section { background:#17181d; color:#92949c; border:0; padding:12px 9px; font-size:10px; font-weight:800; }
+            QTableWidget::item { padding:9px 8px; border-bottom:1px solid #24252a; }
+            QLabel#warning { color:#dca879; background:#211b16; border:1px solid #493323; border-radius:8px; padding:12px; }
         """)
+
+    def page_changed(self, index):
+        is_patch = index == 1
+        self.page_title.setText("Yama merkezi" if is_patch else "Oyun kütüphanesi")
+        self.page_subtitle.setText("Harici Türkçe yamalarını güvenli biçimde yönet." if is_patch else "Kurulu oyunlarını bul ve yerelleştirme çalışmalarını yönet.")
+        self.nav_library.setObjectName("navButton" if is_patch else "navActive")
+        self.nav_patch.setObjectName("navActive" if is_patch else "navButton")
+        self.nav_library.style().unpolish(self.nav_library)
+        self.nav_library.style().polish(self.nav_library)
+        self.nav_patch.style().unpolish(self.nav_patch)
+        self.nav_patch.style().polish(self.nav_patch)
 
     def start_scan(self):
         self.scan_btn.setEnabled(False)
         self.scan_btn.setText("Taranıyor…")
-        self.status.setText("Oyun kütüphaneleri aranıyor…")
-        self.progress.show()
-        self.progress.setRange(0, 0)
+        self.library_status.setText("Oyun kütüphaneleri taranıyor…")
         self.worker = ScanWorker()
         self.worker.completed.connect(self.scan_finished)
         self.worker.failed.connect(self.scan_failed)
@@ -291,22 +387,17 @@ class MainWindow(QMainWindow):
 
     def scan_finished(self, games):
         self.games = games
-        self.count_card.value_label.setText(str(len(games)))
+        self.game_count.value.setText(str(len(games)))
         self.render_games()
-        self.status.setText(f"Tarama tamamlandı · {len(games)} kayıt bulundu")
-        self.finish_scan()
+        self.library_status.setText(f"Tarama tamamlandı · {len(games)} oyun bulundu")
+        self.scan_btn.setEnabled(True)
+        self.scan_btn.setText("⟳   Yeniden tara")
 
     def scan_failed(self, message):
-        self.status.setText("Tarama sırasında hata oluştu")
-        QMessageBox.warning(self, APP_NAME, f"Oyun taraması tamamlanamadı:\n{message}")
-        self.finish_scan()
-
-    def finish_scan(self):
+        self.library_status.setText("Tarama sırasında hata oluştu")
+        QMessageBox.warning(self, APP_NAME, message)
         self.scan_btn.setEnabled(True)
-        self.scan_btn.setText("⌕   Yeniden Tara")
-        self.progress.hide()
-        self.progress.setRange(0, 1)
-        self.progress.setValue(0)
+        self.scan_btn.setText("⟳   Yeniden tara")
 
     def render_games(self):
         query = self.search.text().casefold()
@@ -319,6 +410,72 @@ class MainWindow(QMainWindow):
                 if col == 0:
                     cell.setFont(QFont("Segoe UI", 10, QFont.DemiBold))
                 self.table.setItem(row, col, cell)
+
+    def selected_game(self):
+        row = self.table.currentRow()
+        if row < 0:
+            return None
+        name_item = self.table.item(row, 0)
+        path_item = self.table.item(row, 2)
+        if not name_item or not path_item:
+            return None
+        path = path_item.text()
+        return next((g for g in self.games if g.path == path), None)
+
+    def selection_changed(self):
+        game = self.selected_game()
+        if game:
+            self.target_label.setText(f"{game.name}  ·  {game.path}")
+            self.install_btn.setEnabled(bool(self.patch_path))
+        else:
+            self.target_label.setText("Önce Oyun kütüphanesi bölümünden bir oyun seç.")
+            self.install_btn.setEnabled(False)
+
+    def choose_patch(self):
+        filename, _ = QFileDialog.getOpenFileName(self, "Sarman yama paketi seç", "", "Yama paketleri (*.zip)")
+        if not filename:
+            return
+        try:
+            manifest = inspect_patch(filename)
+            self.patch_path = filename
+            self.patch_file_label.setText(filename)
+            self.patch_info.setText(f"{manifest['name']}  ·  Sürüm {manifest['version']}  ·  {len(manifest['files'])} dosya")
+            self.install_btn.setEnabled(self.selected_game() is not None)
+        except PatchError as exc:
+            self.patch_path = None
+            self.install_btn.setEnabled(False)
+            QMessageBox.warning(self, APP_NAME, str(exc))
+
+    def apply_patch(self):
+        game = self.selected_game()
+        if not game or not self.patch_path:
+            return
+        answer = QMessageBox.question(self, "Yama yüklensin mi?",
+            f"'{game.name}' klasörüne dosya yazılacak. Mevcut dosyalar yedeklenecek. Devam edilsin mi?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            result = install_patch(self.patch_path, game.path)
+            QMessageBox.information(self, APP_NAME, f"{result['name']} yüklendi.\nYedek: {result['backup']}")
+        except (PatchError, OSError) as exc:
+            QMessageBox.critical(self, APP_NAME, f"Yama yüklenemedi:\n{exc}")
+
+    def rollback_patch(self):
+        game = self.selected_game()
+        if not game:
+            QMessageBox.information(self, APP_NAME, "Önce oyun listesinden bir oyun seç.")
+            return
+        answer = QMessageBox.question(self, "Yama geri alınsın mı?",
+            "Bu oyun için kaydedilmiş en son Sarman yaması geri alınacak. Devam edilsin mi?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            name = uninstall_latest(game.path)
+            QMessageBox.information(self, APP_NAME, f"{name} geri alındı.")
+        except (PatchError, OSError) as exc:
+            QMessageBox.warning(self, APP_NAME, str(exc))
 
 
 def main():
