@@ -40,7 +40,9 @@ Uygulama platform parolası istemez, istemci veritabanlarını kırmaz, lisans/D
 
 Çeviri çalışma kayıtları `%LOCALAPPDATA%\Sarman\TRANSLATE\workspaces` altında tutulur. API anahtarı `keyring` üzerinden Windows kimlik bilgisi kasasına yazılır; uygulama kaynak koduna, oyun dosyalarına veya GitHub'a eklenmez.
 
-Gemini kotası Google Cloud projesine ve modele göre değişir. Aynı projede yeni API anahtarı oluşturmak proje kotasını artırmaz. Gerçek kota yenileme zamanı API tarafından kesin verilmediğinde uygulama tahmini geri sayım göstermez. Ücretsiz kullanımın kapsamı Google tarafından belirlenir; ücretsiz erişim veya limitsiz kullanım garantisi yoktur.
+Gemini kotası Google Cloud projesine ve modele göre değişir. Aynı projede yeni API anahtarı oluşturmak proje kotasını artırmaz. Gerçek kota yenileme zamanı API tarafından kesin verilmediğinde uygulama tahmini geri sayım göstermez. Ücretsiz kullanımın kapsamı Google tarafından belirlenir; ücretsiz erişim veya limitsiz kullanım garantisi yoktur. Gemini model listesi `models.list` sayfaları üzerinden alınır ve `generateContent` destekleyen modeller filtrelenir; listelenen modelin ücretsiz veya bu projede kullanılabilir olduğu garanti edilmez.
+
+Kota akışını gerçek API kotasını tüketmeden denemek için Gemini API penceresindeki test komutlarından birini kullan: `/kotabitimiuyarısı1dk`, `/kotabitimiuyarısı1saat` veya `/kotabitimiuyarısıgünlük`. Sayaç çalışırken ayar penceresini kapatıp Çeviri Atölyesi'nde bekleyen çeviriyi başlat. Kuyruk API isteği göndermeden test amaçlı duraklatılır, çalışma kaydedilir; süre sona erdiğinde yeniden **Bekleyenleri çevir** ile devam edebilirsin. Bu simülasyon gerçek Gemini kotasını tüketmez.
 
 ## Desteklenen dosya biçimleri ve sınırlar
 
@@ -93,11 +95,11 @@ Kod imzalama sertifikası satın alınmalı ve yayıncı kimliğiyle eşleşmeli
 
 ## Windows EXE build
 
-Build yalnızca açıkça başlatıldığında/ana dala alındığında çalıştırılmalıdır. Bu feature branch üzerindeki test workflow'u **Windows EXE build başlatmaz**.
+Windows EXE build workflow'u yalnızca GitHub Actions içinden elle başlatılır (**workflow_dispatch**). Kodun main dalına gönderilmesi artık otomatik EXE build başlatmaz; bu, denetim ve test tamamlanmadan build alınmasını önler.
 
 ```powershell
 pip install -r requirements.txt
-pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --collect-all PySide6 --collect-all keyring main.py
+pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --version-file version_info.txt --collect-all PySide6 --collect-all keyring --copy-metadata keyring main.py
 ```
 
 Çıktı: `dist/Sarman TRANSLATE/Sarman TRANSLATE.exe`
