@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest
+from gemini_settings import GeminiSettingsDialog
 
 APP_NAME = "Sarman TRANSLATE"
 ACCENT = "#e58a43"
@@ -180,12 +181,16 @@ class MainWindow(QMainWindow):
         side.addWidget(nav_title)
         self.nav_library = QPushButton("▦   Oyun kütüphanesi")
         self.nav_patch = QPushButton("⇧   Yama merkezi")
+        self.nav_settings = QPushButton("⚙   Gemini API")
         self.nav_library.setObjectName("navActive")
         self.nav_patch.setObjectName("navButton")
+        self.nav_settings.setObjectName("navButton")
         self.nav_library.clicked.connect(lambda: self.pages.setCurrentIndex(0))
         self.nav_patch.clicked.connect(lambda: self.pages.setCurrentIndex(1))
+        self.nav_settings.clicked.connect(self.open_gemini_settings)
         side.addWidget(self.nav_library)
         side.addWidget(self.nav_patch)
+        side.addWidget(self.nav_settings)
         side.addStretch()
         version = QLabel("DESKTOP  ·  ÖN SÜRÜM\nYerelleştirme araçları")
         version.setObjectName("sideFoot")
@@ -364,6 +369,10 @@ class MainWindow(QMainWindow):
             QTableWidget::item { padding:9px 8px; border-bottom:1px solid #24252a; }
             QLabel#warning { color:#dca879; background:#211b16; border:1px solid #493323; border-radius:8px; padding:12px; }
         """)
+
+    def open_gemini_settings(self):
+        dialog = GeminiSettingsDialog(self)
+        dialog.exec()
 
     def page_changed(self, index):
         is_patch = index == 1
