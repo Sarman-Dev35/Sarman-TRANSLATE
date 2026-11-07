@@ -121,11 +121,71 @@ def _write_state(path: Path, state: dict) -> None:
     os.replace(temporary, path)
 
 
+def _matching_install_states(root: Path) -> list[tuple[int, Path, dict]]:
+    base = APP_DATA / "backups"
+    states = []
+    if not base.is_dir():
+        return states
+    for state_path in base.glob("*/**/install.json"):
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            if not isinstance(state, dict) or state.get("schema") != 1:
+                continue
+            game_path = state.get("game_dir")
+            if isinstance(game_path, str) and game_path and Path(game_path).resolve() == root:
+                states.append((state_path.stat().st_mtime_ns, state_path, state))
+        except (OSError, ValueError, TypeError, RuntimeError):
+            continue
+    return states
+
+
+def incomplete_patch_installs(game_dir: str | Path) -> list[dict]:
+    """List interrupted installs that still have a recovery journal."""
+    try:
+        root = Path(game_dir).resolve()
+    except (OSError, ValueError, RuntimeError, TypeError):
+        return []
+    pending = []
+    for _, path, state in _matching_install_states(root):
+        if state.get("status") != "installing":
+            continue
+        files = state.get("files")
+        pending.append({
+            "name": str(state.get("name", "Yama")),
+            "journal": str(path),
+            "files": len(files) if isinstance(files, list) else 0,
+        })
+    return pending
+
+
+def rollback_incomplete_patches(game_dir: str | Path) -> list[str]:
+    """Restore and remove interrupted installs, newest first, preserving journals on failure."""
+    try:
+        root = Path(game_dir).resolve()
+    except (OSError, ValueError, RuntimeError, TypeError) as exc:
+        raise PatchError(f"Oyun klasörü yolu geçersiz: {exc}") from exc
+    recovered = []
+    states = [
+        item for item in _matching_install_states(root)
+        if item[2].get("status") == "installing"
+    ]
+    for _, state_path, state in sorted(states, key=lambda item: item[0], reverse=True):
+        _restore_state(root, state_path.parent, state, strict=True)
+        recovered.append(str(state.get("name", "Yama")))
+        shutil.rmtree(state_path.parent)
+    return recovered
+
+
 def install_patch(archive: str | Path, game_dir: str | Path) -> dict:
     manifest = _load_manifest(archive)
-    root = Path(game_dir).resolve()
+    try:
+        root = Path(game_dir).resolve()
+    except (OSError, RuntimeError, ValueError, TypeError) as exc:
+        raise PatchError(f"Oyun klasörü yolu geçersiz: {exc}") from exc
     if not root.is_dir():
         raise PatchError("Oyun klasörü bulunamadı.")
+    if incomplete_patch_installs(root):
+        raise PatchError("Bu oyunda yarım kalmış bir yama yüklemesi var. Yeni yama yüklemeden önce Yama Merkezi'nden geri al.")
     patch_id = uuid4().hex
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     safe_game = "".join(c if c.isalnum() or c in "-_" else "_" for c in root.name)[:60]
@@ -134,9 +194,11 @@ def install_patch(archive: str | Path, game_dir: str | Path) -> dict:
     state_path = backup_dir / "install.json"
     state = {"schema": 1, "id": patch_id, "name": manifest["name"], "version": manifest["version"],
              "language": str(manifest.get("language") or "").casefold(),
-             "game_dir": str(root), "backup_dir": str(backup_dir), "files": []}
+             "game_dir": str(root), "backup_dir": str(backup_dir), "status": "installing",
+             "expected_files": len(manifest["files"]), "files": []}
     written = []
     try:
+        _write_state(state_path, state)
         with zipfile.ZipFile(archive) as zf:
             for index, item in enumerate(manifest["files"]):
                 relative_target = _safe_relative(item["target"])
@@ -170,6 +232,8 @@ def install_patch(archive: str | Path, game_dir: str | Path) -> dict:
                 finally:
                     if temp_path and temp_path.exists():
                         temp_path.unlink(missing_ok=True)
+        state["status"] = "installed"
+        _write_state(state_path, state)
         return {"name": manifest["name"], "version": manifest["version"], "backup": str(backup_dir)}
     except Exception:
         _restore_state(root, backup_dir, state, strict=False)
@@ -198,7 +262,10 @@ def _restore_state(root: Path, state_dir: Path, state: dict, strict: bool = True
             probe = probe / part
             if probe.is_symlink():
                 raise PatchError("Geri alma sırasında sembolik bağlantı hedefi engellendi.")
-        target = probe.resolve()
+        try:
+            target = probe.resolve()
+        except (OSError, RuntimeError, ValueError) as exc:
+            raise PatchError(f"Geri alma hedefi çözümlenemedi: {exc}") from exc
         if target == root or root not in target.parents:
             raise PatchError("Yedek kaydında oyun klasörü dışına çıkan hedef bulundu.")
         backup_name = entry.get("backup")
@@ -209,8 +276,8 @@ def _restore_state(root: Path, state_dir: Path, state: dict, strict: bool = True
             if Path(backup_name).name != backup_name:
                 raise PatchError("Yedek kaydında geçersiz yedek dosya adı.")
             backup_path = state_dir / backup_name
-            if not backup_path.is_file():
-                raise PatchError(f"Yedek dosyası eksik: {backup_name}")
+            if backup_path.is_symlink() or not backup_path.is_file():
+                raise PatchError(f"Yedek dosyası eksik veya güvenli değil: {backup_name}")
         validated.append((target, backup_path))
     for target, backup_path in reversed(validated):
         if backup_path:
@@ -224,7 +291,10 @@ def _restore_state(root: Path, state_dir: Path, state: dict, strict: bool = True
 
 
 def uninstall_latest(game_dir: str | Path) -> str:
-    root = Path(game_dir).resolve()
+    try:
+        root = Path(game_dir).resolve()
+    except (OSError, RuntimeError, ValueError, TypeError) as exc:
+        raise PatchError(f"Oyun klasörü yolu geçersiz: {exc}") from exc
     base = APP_DATA / "backups"
     states = []
     if base.exists():
@@ -234,7 +304,7 @@ def uninstall_latest(game_dir: str | Path) -> str:
                 if not isinstance(state, dict):
                     continue
                 if state.get("schema") == 1 and Path(state.get("game_dir", "")).resolve() == root:
-                    states.append((state_path.stat().st_mtime, state_path, state))
+                    states.append((state_path.stat().st_mtime_ns, state_path, state))
             except (OSError, ValueError, TypeError, RuntimeError):
                 continue
     if not states:
@@ -242,7 +312,7 @@ def uninstall_latest(game_dir: str | Path) -> str:
     _, state_path, state = max(states, key=lambda item: item[0])
     _restore_state(root, state_path.parent, state, strict=True)
     name = state.get("name", "Yama")
-    shutil.rmtree(state_path.parent, ignore_errors=True)
+    shutil.rmtree(state_path.parent)
     return name
 
 
@@ -262,7 +332,7 @@ def installed_patch_languages(game_dir: str | Path) -> set[str]:
                 state = json.loads(state_path.read_text(encoding="utf-8"))
                 if not isinstance(state, dict):
                     continue
-                if state.get("schema") != 1 or Path(state.get("game_dir", "")).resolve() != root:
+                if state.get("schema") != 1 or state.get("status", "installed") != "installed" or Path(state.get("game_dir", "")).resolve() != root:
                     continue
                 language = state.get("language")
                 if isinstance(language, str) and language.strip():

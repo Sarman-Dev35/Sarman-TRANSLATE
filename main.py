@@ -6,19 +6,30 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import os
 
-from PySide6.QtCore import Qt, QThread, Signal, QTimer
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QSettings
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QMessageBox, QPushButton, QProgressBar, QTableWidget,
-    QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QTabWidget
+    QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QTabWidget, QComboBox
 )
 
-from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest, uninstall_all, installed_patch_languages
+from patch_manager import (PatchError, inspect_patch, install_patch, uninstall_latest, uninstall_all, installed_patch_languages, incomplete_patch_installs, rollback_incomplete_patches)
 from translation_studio import TranslationStudio
+from translation_core import remove_incomplete_patch
 
 APP_NAME = "Sarman TRANSLATE"
 ACCENT = "#e58a43"
+LANGUAGE_LABELS = {
+    "EN": "İngilizce", "TR": "Türkçe", "DE": "Almanca", "FR": "Fransızca",
+    "ES": "İspanyolca", "IT": "İtalyanca", "PT": "Portekizce", "RU": "Rusça",
+    "JA": "Japonca", "KO": "Korece", "ZH": "Çince", "PL": "Lehçe",
+    "NL": "Felemenkçe", "AR": "Arapça", "HI": "Hintçe", "ID": "Endonezce",
+    "UK": "Ukraynaca", "SV": "İsveççe", "NO": "Norveççe", "DA": "Danca",
+    "FI": "Fince", "CS": "Çekçe", "HU": "Macarca", "EL": "Yunanca",
+    "HE": "İbranice", "RO": "Romence", "BG": "Bulgarca", "HR": "Hırvatça",
+    "SK": "Slovakça", "SL": "Slovence", "SR": "Sırpça",
+}
 
 
 from game_discovery import Game, discover_games
@@ -101,6 +112,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(900, 620)
         self.games: list[Game] = []
         self.worker = None
+        self.language_settings = QSettings("Sarman Studios", "Sarman TRANSLATE")
         self.patch_path: str | None = None
         self.patch_manifest: dict | None = None
         self.build_ui()
@@ -208,7 +220,9 @@ class MainWindow(QMainWindow):
         self.remove_game_patches_btn = QPushButton("Yamaları kaldır")
         self.remove_game_patches_btn.setEnabled(False)
         self.remove_game_patches_btn.clicked.connect(self.remove_all_patches)
-        row.addWidget(self.remove_game_patches_btn)
+        self.recover_incomplete_btn = QPushButton("Yarım kalan yüklemeyi geri al")
+        self.recover_incomplete_btn.setEnabled(False)
+        self.recover_incomplete_btn.clicked.connect(self.recover_incomplete_install)
         lib.addLayout(row)
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["OYUN", "PLATFORM", "DİL / YAMA DURUMU"])
@@ -222,6 +236,24 @@ class MainWindow(QMainWindow):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.itemSelectionChanged.connect(self.selection_changed)
         lib.addWidget(self.table, 1)
+        language_row = QHBoxLayout()
+        language_title = QLabel("OYUNUN METİN DİLİ")
+        language_title.setObjectName("eyebrow")
+        language_row.addWidget(language_title)
+        self.source_language_combo = QComboBox()
+        self.source_language_combo.setMinimumWidth(210)
+        self.source_language_combo.setEnabled(False)
+        self.source_language_combo.currentIndexChanged.connect(self.source_language_changed)
+        language_row.addWidget(self.source_language_combo)
+        self.source_language_hint = QLabel("Bir oyun seçtiğinde bulunan dil dosyaları burada listelenir.")
+        self.source_language_hint.setObjectName("muted")
+        language_row.addWidget(self.source_language_hint, 1)
+        lib.addLayout(language_row)
+        patch_manage_row = QHBoxLayout()
+        patch_manage_row.addStretch()
+        patch_manage_row.addWidget(self.remove_game_patches_btn)
+        patch_manage_row.addWidget(self.recover_incomplete_btn)
+        lib.addLayout(patch_manage_row)
         self.library_status = QLabel("Hazır · Henüz tarama yapılmadı")
         self.library_status.setObjectName("muted")
         lib.addWidget(self.library_status)
@@ -239,9 +271,15 @@ class MainWindow(QMainWindow):
         self.patch_file_label.setObjectName("muted")
         self.patch_file_label.setWordWrap(True)
         pl.addWidget(self.patch_file_label)
+        patch_actions = QHBoxLayout()
         self.choose_patch_btn = QPushButton("Yama dosyası seç (.zip)")
         self.choose_patch_btn.clicked.connect(self.choose_patch)
-        pl.addWidget(self.choose_patch_btn, 0, Qt.AlignLeft)
+        patch_actions.addWidget(self.choose_patch_btn)
+        self.remove_partial_patch_btn = QPushButton("Yarım kalan yamayı sil")
+        self.remove_partial_patch_btn.clicked.connect(self.remove_partial_patch_file)
+        patch_actions.addWidget(self.remove_partial_patch_btn)
+        patch_actions.addStretch()
+        pl.addLayout(patch_actions)
         self.patch_info = QLabel("Paket seçildiğinde adı, sürümü ve dosya sayısı burada görünür.")
         self.patch_info.setObjectName("muted")
         pl.addWidget(self.patch_info)
@@ -307,6 +345,9 @@ class MainWindow(QMainWindow):
             QHeaderView::section { background:#17181d; color:#92949c; border:0; padding:12px 9px; font-size:10px; font-weight:800; }
             QTableWidget::item { padding:9px 8px; border-bottom:1px solid #24252a; }
             QLabel#warning { color:#dca879; background:#211b16; border:1px solid #493323; border-radius:8px; padding:12px; }
+            QComboBox { background:#141519; border:1px solid #34353c; border-radius:8px; padding:8px 10px; min-width:150px; }
+            QComboBox::drop-down { border:0; width:25px; }
+            QComboBox QAbstractItemView { background:#17181d; selection-background-color:#35271d; }
         """)
 
     def closeEvent(self, event):
@@ -345,6 +386,7 @@ class MainWindow(QMainWindow):
         worker = self.sender()
         if worker is self.worker:
             self.worker = None
+            self.scan_btn.setEnabled(True)
 
     def scan_finished(self, games):
         worker = self.sender()
@@ -352,13 +394,17 @@ class MainWindow(QMainWindow):
             return
         self.studio_btn.setEnabled(False)
         self.install_btn.setEnabled(False)
+        self.remove_game_patches_btn.setEnabled(False)
+        self.recover_incomplete_btn.setEnabled(False)
+        self.source_language_combo.clear()
+        self.source_language_combo.setEnabled(False)
         self.table.clearSelection()
         self.table.setCurrentCell(-1, -1)
         self.target_label.setText("Önce Oyun kütüphanesi bölümünden bir oyun seç.")
         self.games = games
         self.render_games()
         self.library_status.setText(f"Tarama tamamlandı · {len(games)} oyun bulundu")
-        self.scan_btn.setEnabled(True)
+        self.selection_changed()
         self.scan_btn.setText("⟳   Yeniden tara")
 
     def scan_failed(self, message):
@@ -367,17 +413,22 @@ class MainWindow(QMainWindow):
             return
         self.library_status.setText("Tarama sırasında hata oluştu")
         QMessageBox.warning(self, APP_NAME, message)
-        self.scan_btn.setEnabled(True)
         self.scan_btn.setText("⟳   Yeniden tara")
 
     def render_games(self):
+        selected = self.selected_game()
+        selected_path = selected.path if selected else None
         query = self.search.text().casefold()
         items = [g for g in self.games if query in g.name.casefold() or query in g.platform.casefold() or query in g.path.casefold()]
+        self.table.blockSignals(True)
         self.table.setRowCount(len(items))
         for row, game in enumerate(items):
             patched = installed_patch_languages(game.path)
+            incomplete = incomplete_patch_installs(game.path)
             detected = " · ".join(game.detected_languages) if game.detected_languages else "Belirlenemedi"
             patch_status = " · ".join(code.upper() for code in sorted(patched)) + " yüklü" if patched else "Yüklü değil"
+            if incomplete:
+                patch_status += "  ·  Yarım kalan yükleme"
             status = f"{detected}  ·  {patch_status}"
             values = (game.name, game.platform, status)
             for col, value in enumerate(values):
@@ -387,6 +438,33 @@ class MainWindow(QMainWindow):
                     cell.setFont(QFont("Segoe UI", 10, QFont.DemiBold))
                 self.table.setItem(row, col, cell)
             self.table.item(row, 0).setData(Qt.UserRole, game.path)
+        if selected_path:
+            for row, game in enumerate(items):
+                if game.path == selected_path:
+                    self.table.selectRow(row)
+                    break
+        self.table.blockSignals(False)
+        self.selection_changed()
+
+    def _language_setting_key(self, game):
+        import hashlib
+        identity = hashlib.sha256(os.path.normcase(os.path.abspath(game.path)).encode("utf-8")).hexdigest()
+        return f"source-language/{identity}"
+
+    def source_language_changed(self):
+        game = self.selected_game()
+        if not game:
+            return
+        code = self.source_language_combo.currentData()
+        if not code:
+            return
+        self.language_settings.setValue(self._language_setting_key(game), code)
+        if code == "EN":
+            self.source_language_hint.setText("İngilizce → Türkçe · Hy-MT2 otomatik çevirisi destekleniyor.")
+        else:
+            self.source_language_hint.setText(
+                f"{LANGUAGE_LABELS.get(code, code)} kaynak seçildi. Otomatik model şu anda yalnızca İngilizce → Türkçe destekliyor; elle çeviri ve yama oluşturma kullanılabilir."
+            )
 
     def selected_game(self):
         row = self.table.currentRow()
@@ -405,19 +483,89 @@ class MainWindow(QMainWindow):
             self.target_label.setText(f"{game.name}  ·  {game.path}")
             self.install_btn.setEnabled(bool(self.patch_path))
             self.remove_game_patches_btn.setEnabled(bool(installed_patch_languages(game.path)))
+            self.recover_incomplete_btn.setEnabled(bool(incomplete_patch_installs(game.path)))
+            codes = sorted(set(game.detected_languages) | {"EN"}, key=lambda code: (code != "EN", code))
+            saved = str(self.language_settings.value(self._language_setting_key(game), "EN")).upper()
+            if saved not in codes:
+                saved = "EN"
+            self.source_language_combo.blockSignals(True)
+            self.source_language_combo.clear()
+            for code in codes:
+                self.source_language_combo.addItem(f"{code}  ·  {LANGUAGE_LABELS.get(code, code)}", code)
+            self.source_language_combo.setCurrentIndex(max(0, self.source_language_combo.findData(saved)))
+            self.source_language_combo.setEnabled(True)
+            self.source_language_combo.blockSignals(False)
+            self.source_language_changed()
         else:
             self.studio_btn.setEnabled(False)
             self.target_label.setText("Önce Oyun kütüphanesi bölümünden bir oyun seç.")
             self.install_btn.setEnabled(False)
             self.remove_game_patches_btn.setEnabled(False)
+            self.recover_incomplete_btn.setEnabled(False)
+            self.source_language_combo.blockSignals(True)
+            self.source_language_combo.clear()
+            self.source_language_combo.setEnabled(False)
+            self.source_language_combo.blockSignals(False)
+            self.source_language_hint.setText("Bir oyun seçtiğinde bulunan dil dosyaları burada listelenir.")
 
     def open_translation_studio(self):
         game = self.selected_game()
         if not game:
             QMessageBox.information(self, APP_NAME, "Önce oyun listesinden bir oyun seç.")
             return
-        dialog = TranslationStudio(game, self)
-        dialog.exec()
+        source_language = self.source_language_combo.currentData() or "EN"
+        if not Path(game.path).is_dir():
+            QMessageBox.warning(self, APP_NAME, "Oyun klasörü artık bulunamıyor. Oyunları yeniden tara ve kurulum konumunu kontrol et.")
+            return
+        try:
+            dialog = TranslationStudio(game, self, source_language=source_language)
+            dialog.exec()
+        except (OSError, RuntimeError, ValueError) as exc:
+            QMessageBox.warning(self, APP_NAME, f"Çeviri Atölyesi açılamadı:\n{exc}")
+
+    def remove_partial_patch_file(self):
+        filename, _ = QFileDialog.getOpenFileName(
+            self, "Yarım kalan Sarman yama dosyasını seç", "",
+            "Yarım kalan yama dosyaları (*.zip.tmp *.sarman-tmp)"
+        )
+        if not filename:
+            return
+        answer = QMessageBox.question(
+            self, "Yarım kalan yama silinsin mi?",
+            f"Bu geçici yama dosyası tamamen silinecek:\n{filename}\n\nDevam edilsin mi?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            removed = remove_incomplete_patch(filename)
+            QMessageBox.information(self, APP_NAME, "Yarım kalan yama dosyası silindi." if removed else "Dosya artık bulunmuyor.")
+        except (OSError, ValueError) as exc:
+            QMessageBox.warning(self, APP_NAME, f"Yama dosyası silinemedi:\n{exc}")
+
+    def recover_incomplete_install(self):
+        game = self.selected_game()
+        if not game:
+            return
+        pending = incomplete_patch_installs(game.path)
+        if not pending:
+            self.selection_changed()
+            return
+        names = "\n".join(f"• {item['name']} ({item['files']} dosya kaydı)" for item in pending)
+        answer = QMessageBox.question(
+            self, "Yarım kalan yükleme geri alınsın mı?",
+            f"{game.name} için tamamlanmamış yama işlemleri bulundu:\n{names}\n\n"
+            "Orijinal dosyalar yedeklerden geri yüklenecek. Devam edilsin mi?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            recovered = rollback_incomplete_patches(game.path)
+            self.render_games()
+            QMessageBox.information(self, APP_NAME, f"{len(recovered)} yarım kalan yama yüklemesi geri alındı.")
+        except (PatchError, OSError) as exc:
+            QMessageBox.warning(self, APP_NAME, f"Geri alma tamamlanamadı. Yedek kayıtları korundu.\n\n{exc}")
 
     def choose_patch(self):
         filename, _ = QFileDialog.getOpenFileName(self, "Sarman yama paketi seç", "", "Yama paketleri (*.zip)")
@@ -454,6 +602,7 @@ class MainWindow(QMainWindow):
         try:
             result = install_patch(self.patch_path, game.path)
             self.render_games()
+            self.selection_changed()
             QMessageBox.information(self, APP_NAME, f"{result['name']} yüklendi.\nYedek: {result['backup']}")
         except (PatchError, OSError) as exc:
             QMessageBox.critical(self, APP_NAME, f"Yama yüklenemedi:\n{exc}")
@@ -493,6 +642,7 @@ class MainWindow(QMainWindow):
         try:
             name = uninstall_latest(game.path)
             self.render_games()
+            self.selection_changed()
             QMessageBox.information(self, APP_NAME, f"{name} geri alındı.")
         except (PatchError, OSError) as exc:
             QMessageBox.warning(self, APP_NAME, str(exc))

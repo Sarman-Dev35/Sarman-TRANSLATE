@@ -219,11 +219,47 @@ def _scan_user_game_folders(extra_roots: Iterable[str] = ()) -> list[Game]:
     return games
 
 
-_LANGUAGE_CODES = {"tr": "TR", "tur": "TR", "turkish": "TR", "tr-tr": "TR", "en": "EN", "eng": "EN", "english": "EN", "en-us": "EN", "en-gb": "EN", "de": "DE", "fr": "FR", "es": "ES", "it": "IT", "pt": "PT", "pt-br": "PT", "ru": "RU", "ja": "JA", "jp": "JA", "ko": "KO", "zh": "ZH", "zh-cn": "ZH", "pl": "PL", "nl": "NL"}
-_LANGUAGE_FILE = re.compile(r"(?:^|[._-])(tr|tur|turkish|tr-tr|en|eng|english|en-us|en-gb|de|fr|es|it|pt|pt-br|ru|ja|jp|ko|zh|zh-cn|pl|nl)(?:[._-]|$)", re.I)
+_LANGUAGE_CODES = {
+    "tr": "TR", "tur": "TR", "turkish": "TR", "tr-tr": "TR",
+    "en": "EN", "eng": "EN", "english": "EN", "en-us": "EN", "en-gb": "EN",
+    "de": "DE", "ger": "DE", "german": "DE", "de-de": "DE",
+    "fr": "FR", "fre": "FR", "french": "FR", "fr-fr": "FR",
+    "es": "ES", "spa": "ES", "spanish": "ES", "es-es": "ES",
+    "it": "IT", "ita": "IT", "italian": "IT",
+    "pt": "PT", "por": "PT", "portuguese": "PT", "pt-br": "PT", "pt-pt": "PT",
+    "ru": "RU", "rus": "RU", "russian": "RU",
+    "ja": "JA", "jpn": "JA", "japanese": "JA", "jp": "JA",
+    "ko": "KO", "kor": "KO", "korean": "KO",
+    "zh": "ZH", "zho": "ZH", "chinese": "ZH", "zh-cn": "ZH", "zh-tw": "ZH",
+    "pl": "PL", "pol": "PL", "polish": "PL",
+    "nl": "NL", "dut": "NL", "dutch": "NL",
+    "ar": "AR", "ara": "AR", "arabic": "AR",
+    "hi": "HI", "hin": "HI", "hindi": "HI",
+    "id": "ID", "ind": "ID", "indonesian": "ID",
+    "uk": "UK", "ukr": "UK", "ukrainian": "UK",
+    "sv": "SV", "swe": "SV", "swedish": "SV",
+    "no": "NO", "nor": "NO", "norwegian": "NO",
+    "da": "DA", "dan": "DA", "danish": "DA",
+    "fi": "FI", "fin": "FI", "finnish": "FI",
+    "cs": "CS", "ces": "CS", "czech": "CS",
+    "hu": "HU", "hun": "HU", "hungarian": "HU",
+    "el": "EL", "ell": "EL", "greek": "EL",
+    "he": "HE", "heb": "HE", "hebrew": "HE",
+    "ro": "RO", "ron": "RO", "romanian": "RO",
+    "bg": "BG", "bul": "BG", "bulgarian": "BG",
+    "hr": "HR", "hrv": "HR", "croatian": "HR",
+    "sk": "SK", "slk": "SK", "slovak": "SK",
+    "sl": "SL", "slv": "SL", "slovenian": "SL",
+    "sr": "SR", "srp": "SR", "serbian": "SR",
+}
+_LANGUAGE_FILE = re.compile(
+    r"(?:^|[._-])(" + "|".join(sorted(map(re.escape, _LANGUAGE_CODES), key=len, reverse=True)) + r")(?:[._-]|$)",
+    re.I,
+)
 _LOCALE_DIRS = {"locale", "locales", "lang", "langs", "language", "languages", "localization", "translations", "text"}
 
 def _detect_language_files(game_root: Path) -> tuple[str, ...]:
+    """Detect locales only from supported text files and recognizable locale folders."""
     found: set[str] = set()
     scanned = 0
     visited_dirs = 0
@@ -233,28 +269,32 @@ def _detect_language_files(game_root: Path) -> tuple[str, ...]:
             if visited_dirs > 1500:
                 break
             rel = Path(current).relative_to(game_root)
-            if len(rel.parts) > 5:
-                dirs[:] = []
-                continue
-            dirs[:] = [d for d in dirs if d.casefold() not in {"engine", "plugins", "thirdparty", "redist", "redistributable", "crashreporter", "__pycache__"}]
+            dirs[:] = [
+                d for d in dirs
+                if d.casefold() not in {
+                    "engine", "plugins", "thirdparty", "redist", "redistributable",
+                    "crashreporter", "__pycache__",
+                }
+            ]
+            locale_context = any(part.casefold() in _LOCALE_DIRS for part in rel.parts)
             for part in rel.parts:
-                code = _LANGUAGE_CODES.get(part.casefold())
-                if code:
-                    found.add(code)
-            if rel.parts and not any(part.casefold() in _LOCALE_DIRS or part.casefold() in _LANGUAGE_CODES for part in rel.parts):
-                continue
+                token = part.casefold()
+                if locale_context or len(token) > 3 or re.fullmatch(r"[a-z]{2,3}[-_][a-z]{2,4}", token):
+                    code = _LANGUAGE_CODES.get(token.replace("_", "-"))
+                    if code:
+                        found.add(code)
             for filename in files:
+                if Path(filename).suffix.casefold() not in {".json", ".csv", ".txt", ".ini"}:
+                    continue
                 scanned += 1
                 if scanned > 5000:
                     return tuple(sorted(found))
-                if Path(filename).suffix.casefold() not in {".json", ".csv", ".txt", ".ini", ".po", ".xml", ".locres"}:
-                    continue
-                match = _LANGUAGE_FILE.search(Path(filename).stem)
+                match = _LANGUAGE_FILE.search(Path(filename).stem.replace('_', '-'))
                 if match:
-                    code = _LANGUAGE_CODES.get(match.group(1).casefold())
+                    code = _LANGUAGE_CODES.get(match.group(1).casefold().replace("_", "-"))
                     if code:
                         found.add(code)
-    except (OSError, ValueError):
+    except (OSError, ValueError, RuntimeError):
         pass
     return tuple(sorted(found))
 

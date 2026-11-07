@@ -33,6 +33,8 @@ MODEL_SHA256 = "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699
 MODEL_FILE_SIZE = 1_133_080_448
 MODEL_SIZE_HINT = MODEL_FILE_SIZE
 _LOCK = threading.RLock()
+_INFERENCE_LOCK = threading.Lock()
+_DOWNLOAD_LOCK = threading.Lock()
 _MODEL = None
 _TOKEN_RE = re.compile(r"\{[^{}]+\}|\$\{[^{}]+\}|\$[A-Za-z_][A-Za-z0-9_]*|%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[a-zA-Z%]|\[[A-Za-z0-9_.:-]+\]|<[^>]+>|\\[nrt]|\\u[0-9a-fA-F]{4}")
 
@@ -60,17 +62,25 @@ DEFAULT_GLOSSARY = {
 def model_status() -> dict:
     partial_path = MODEL_PATH.with_suffix(MODEL_PATH.suffix + ".part")
     try:
-        present = MODEL_PATH.is_file()
-        partial_present = partial_path.is_file()
-        installed = present and MODEL_PATH.stat().st_size == MODEL_FILE_SIZE
-    except OSError:
+        present = MODEL_PATH.is_file() or MODEL_PATH.is_symlink()
+        partial_present = partial_path.is_file() or partial_path.is_symlink()
+        header_valid = False
+        if present and not MODEL_PATH.is_symlink():
+            with MODEL_PATH.open("rb") as model_file:
+                header_valid = model_file.read(4) == b"GGUF"
+        installed = present and not MODEL_PATH.is_symlink() and header_valid and MODEL_PATH.stat().st_size == MODEL_FILE_SIZE
+    except (OSError, RuntimeError, ValueError):
         present = False
         partial_present = False
+        header_valid = False
         installed = False
+    state = "installed" if installed else "partial" if partial_present else "corrupt" if present else "missing"
     return {
+        "state": state,
         "installed": installed,
         "present": present,
         "partial_present": partial_present,
+        "header_valid": header_valid,
         "engine": "Tencent Hy-MT2 1.8B · GGUF Q4_K_M",
         "message": ("Hy-MT2 çeviri modeli hazır." if installed else "Eksik model indirmesi bulundu; kaldığı yerden sürdürülebilir." if partial_present else "Model dosyası eksik veya bozuk; yeniden indirilebilir." if present else "Hy-MT2 1.8B çeviri modeli henüz indirilmedi."),
         "model_path": str(MODEL_PATH),
@@ -79,11 +89,19 @@ def model_status() -> dict:
 
 
 def install_english_turkish_model(progress=None) -> None:
+    """Serialize model downloads so two windows cannot corrupt the shared partial file."""
+    with _DOWNLOAD_LOCK:
+        _install_english_turkish_model_locked(progress)
+
+
+def _install_english_turkish_model_locked(progress=None) -> None:
     """Download and verify Tencent's official Hy-MT2 1.8B Q4_K_M translation model."""
     if model_status()["installed"]:
         return
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     partial = MODEL_PATH.with_suffix(MODEL_PATH.suffix + ".part")
+    if MODEL_PATH.is_symlink() or partial.is_symlink():
+        raise LocalTranslationError("Model veya yarım indirme yolu sembolik bağlantı. Güvenlik için bu dosyayı elle kontrol edip bağlantıyı kaldır.")
     existing = partial.stat().st_size if partial.exists() else 0
     if existing >= MODEL_FILE_SIZE:
         partial.unlink(missing_ok=True)
@@ -123,7 +141,8 @@ def install_english_turkish_model(progress=None) -> None:
                 output.flush()
                 os.fsync(output.fileno())
         if downloaded != MODEL_FILE_SIZE or partial.stat().st_size != MODEL_FILE_SIZE:
-            raise LocalTranslationError("Hy-MT2 indirmesi tamamlanmadı veya dosya boyutu doğrulanamadı.")
+            # A truncated transfer is resumable; preserve the partial file for the next attempt.
+            raise OSError("Hy-MT2 indirmesi henüz tamamlanmadı; kalan bölüm sonraki denemede sürdürülebilir.")
         digest = hashlib.sha256()
         with partial.open("rb") as source:
             for chunk in iter(lambda: source.read(8 * 1024 * 1024), b""):
@@ -144,7 +163,7 @@ def install_english_turkish_model(progress=None) -> None:
 def uninstall_english_turkish_model() -> bool:
     """Unload and remove model weights and any incomplete download only."""
     global _MODEL
-    with _LOCK:
+    with _DOWNLOAD_LOCK, _INFERENCE_LOCK, _LOCK:
         if _MODEL is not None:
             close = getattr(_MODEL, "close", None)
             try:
@@ -157,7 +176,7 @@ def uninstall_english_turkish_model() -> bool:
         removed = False
         for path in (MODEL_PATH, MODEL_PATH.with_suffix(MODEL_PATH.suffix + ".part")):
             try:
-                if path.is_file():
+                if path.is_file() or path.is_symlink():
                     path.unlink()
                     removed = True
             except OSError as exc:
@@ -286,16 +305,17 @@ def translate_text(text: str, context: str = "", game_name: str = "") -> str:
         "Turkish translation:"
     )
     try:
-        model = _get_model()
-        response = model(
-            prompt,
-            max_tokens=min(512, max(64, len(protected) * 4)),
-            temperature=0.3,
-            top_p=0.6,
-            top_k=20,
-            repeat_penalty=1.05,
-            echo=False,
-        )
+        with _INFERENCE_LOCK:
+            model = _get_model()
+            response = model(
+                prompt,
+                max_tokens=min(512, max(64, len(protected) * 4)),
+                temperature=0.3,
+                top_p=0.6,
+                top_k=20,
+                repeat_penalty=1.05,
+                echo=False,
+            )
         result = response["choices"][0]["text"].strip()
         result = re.sub(r"^(Turkish translation|Translation|Türkçe çeviri|Çeviri)\s*:\s*", "", result, flags=re.IGNORECASE)
         for marker, replacement in tokens:

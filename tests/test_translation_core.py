@@ -11,6 +11,7 @@ from patch_manager import PatchError, inspect_patch, install_patch, uninstall_la
 from translation_core import (
     TextEntry, scan_game_texts, validate_translation, save_workspace,
     load_workspace, build_translated_files, create_translation_patch, StaleSourceError,
+    remove_incomplete_patch,
 )
 
 
@@ -35,6 +36,58 @@ class TranslationCoreTests(unittest.TestCase):
     def test_placeholder_validation(self):
         self.assertEqual(validate_translation("Hello {player_name}", "Merhaba {player_name}"), [])
         self.assertTrue(validate_translation("Hello %s", "Merhaba"))
+
+    def test_deeply_nested_json_does_not_abort_other_file_scans(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            nested = '{"a":' * 1100 + '"Deep text"' + '}' * 1100
+            (root / "deep.json").write_text(nested, encoding="utf-8")
+            (root / "valid.json").write_text('{"title":"Valid text"}', encoding="utf-8")
+            entries = scan_game_texts(root)
+            self.assertEqual([item.source for item in entries], ["Valid text"])
+
+    def test_scan_selects_only_the_requested_locale_and_keeps_neutral_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Localization" / "en-US").mkdir(parents=True)
+            (root / "Localization" / "tr-TR").mkdir(parents=True)
+            (root / "Localization" / "de-DE").mkdir(parents=True)
+            (root / "Localization" / "en-US" / "dialog.json").write_text('{"line":"Start Game"}', encoding="utf-8")
+            (root / "Localization" / "tr-TR" / "dialog.json").write_text('{"line":"Oyuna Başla"}', encoding="utf-8")
+            (root / "Localization" / "de-DE" / "dialog.json").write_text('{"line":"Spiel starten"}', encoding="utf-8")
+            (root / "Data" / "English").mkdir(parents=True)
+            (root / "Data" / "German").mkdir(parents=True)
+            (root / "Data" / "English" / "menu.json").write_text('{"line":"English folder text"}', encoding="utf-8")
+            (root / "Data" / "German" / "menu.json").write_text('{"line":"German folder text"}', encoding="utf-8")
+            (root / "neutral.json").write_text('{"line":"Neutral text"}', encoding="utf-8")
+
+            english = scan_game_texts(root, source_language="EN")
+            german = scan_game_texts(root, source_language="DE")
+            self.assertEqual({item.source for item in english}, {"Start Game", "English folder text", "Neutral text"})
+            self.assertEqual({item.source for item in german}, {"Spiel starten", "German folder text", "Neutral text"})
+
+    def test_csv_uses_selected_language_column(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "locale.csv").write_text(
+                "key,en-US,de-DE,fr-FR\nstart,Start,Spiel starten,Démarrer\n",
+                encoding="utf-8"
+            )
+            entries = scan_game_texts(root, source_language="DE")
+            self.assertEqual([item.source for item in entries], ["Spiel starten"])
+
+    def test_remove_incomplete_patch_only_removes_sarman_temp_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            partial = root / "unfinished.zip.tmp"
+            unrelated = root / "notes.tmp"
+            partial.write_bytes(b"partial zip")
+            unrelated.write_bytes(b"keep")
+            self.assertTrue(remove_incomplete_patch(partial))
+            self.assertFalse(partial.exists())
+            self.assertTrue(unrelated.exists())
+            with self.assertRaisesRegex(ValueError, "Yalnızca"):
+                remove_incomplete_patch(unrelated)
 
     def test_workspace_roundtrip(self):
         with tempfile.TemporaryDirectory() as tmp:

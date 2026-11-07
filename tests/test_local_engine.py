@@ -38,6 +38,41 @@ class LocalEngineTests(unittest.TestCase):
         self.assertIn("1,13 GB", local_engine.model_status()["download_size"])
         self.assertIn("Hy-MT2", local_engine.model_status()["engine"])
 
+    def test_model_inference_is_serialized_across_translation_threads(self):
+        import threading
+        import time
+
+        class FakeModel:
+            def __init__(self):
+                self.guard = threading.Lock()
+                self.active = 0
+                self.max_active = 0
+
+            def __call__(self, prompt, **kwargs):
+                with self.guard:
+                    self.active += 1
+                    self.max_active = max(self.max_active, self.active)
+                time.sleep(0.04)
+                with self.guard:
+                    self.active -= 1
+                return {"choices": [{"text": "Kapıyı aç"}]}
+
+        fake = FakeModel()
+        results = []
+        with patch.object(local_engine, "_get_model", return_value=fake), patch.object(
+            local_engine, "_cache_get", return_value=None
+        ), patch.object(local_engine, "_cache_put"):
+            threads = [
+                threading.Thread(target=lambda value=value: results.append(local_engine.translate_text(value)))
+                for value in ("Open the door", "Unlock the gate")
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=5)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(fake.max_active, 1)
+
     def test_glossary_change_invalidates_translation_memory(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(local_engine, "APP_DATA", Path(tmp)):
             local_engine._cache_put("Continue", "Devam")
@@ -51,6 +86,23 @@ class LocalEngineTests(unittest.TestCase):
     def test_status_is_safe_when_model_missing(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(local_engine, "MODEL_PATH", Path(tmp) / "missing.gguf"):
             self.assertFalse(local_engine.model_status()["installed"])
+
+    def test_model_status_distinguishes_missing_partial_corrupt_and_installed_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model_path = Path(tmp) / local_engine.MODEL_NAME
+            partial_path = model_path.with_suffix(model_path.suffix + ".part")
+            with patch.object(local_engine, "MODEL_PATH", model_path), patch.object(local_engine, "MODEL_FILE_SIZE", 8):
+                self.assertEqual(local_engine.model_status()["state"], "missing")
+                partial_path.write_bytes(b"part")
+                self.assertEqual(local_engine.model_status()["state"], "partial")
+                partial_path.unlink()
+                model_path.write_bytes(b"bad")
+                status = local_engine.model_status()
+                self.assertEqual(status["state"], "corrupt")
+                self.assertTrue(status["present"])
+                self.assertFalse(status["installed"])
+                model_path.write_bytes(b"GGUF1234")
+                self.assertEqual(local_engine.model_status()["state"], "installed")
 
     def test_packaged_model_lives_next_to_executable(self):
         with patch.object(local_engine.sys, "frozen", True, create=True), patch.object(
@@ -104,6 +156,34 @@ class LocalEngineTests(unittest.TestCase):
                 self.assertTrue(status["partial_present"])
                 self.assertTrue(local_engine.uninstall_english_turkish_model())
                 self.assertFalse(partial_path.exists())
+
+    def test_truncated_model_download_keeps_partial_file_for_resume(self):
+        import hashlib
+
+        payload = b"GGUF-short"
+        class FakeResponse:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self, _size):
+                if getattr(self, "sent", False):
+                    return b""
+                self.sent = True
+                return payload
+
+        with tempfile.TemporaryDirectory() as tmp:
+            model_path = Path(tmp) / local_engine.MODEL_NAME
+            partial = model_path.with_suffix(model_path.suffix + ".part")
+            with patch.object(local_engine, "MODEL_DIR", Path(tmp)), patch.object(
+                local_engine, "MODEL_PATH", model_path
+            ), patch.object(local_engine, "MODEL_FILE_SIZE", len(payload) + 4), patch.object(
+                local_engine, "MODEL_SHA256", hashlib.sha256(payload).hexdigest()
+            ), patch.object(local_engine.urllib.request, "urlopen", return_value=FakeResponse()):
+                with self.assertRaisesRegex(local_engine.LocalTranslationError, "sürdürülebilir"):
+                    local_engine.install_english_turkish_model()
+            self.assertTrue(partial.is_file())
+            self.assertEqual(partial.read_bytes(), payload)
+            self.assertFalse(model_path.exists())
 
     def test_model_download_reports_bytes_speed_and_eta(self):
         import hashlib

@@ -43,7 +43,11 @@ class GameDiscoveryTests(unittest.TestCase):
             locale.mkdir(parents=True)
             (locale / "tr-TR.json").write_text('{"hello":"Merhaba"}', encoding="utf-8")
             (locale / "en-US.json").write_text('{"hello":"Hello"}', encoding="utf-8")
-            self.assertEqual(_detect_language_files(root), ("EN", "TR"))
+            (locale / "ar.json").write_text('{"hello":"مرحبا"}', encoding="utf-8")
+            (locale / "id.json").write_text('{"hello":"Halo"}', encoding="utf-8")
+            (root / "Data").mkdir(exist_ok=True)
+            (root / "Data" / "strings.hi.json").write_text('{"hello":"नमस्ते"}', encoding="utf-8")
+            self.assertEqual(_detect_language_files(root), ("AR", "EN", "HI", "ID", "TR"))
 
     def test_user_added_folder_discovers_game_executable(self):
         with tempfile.TemporaryDirectory() as tmp:

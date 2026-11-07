@@ -16,6 +16,79 @@ MAX_FILES = 5000
 MAX_DIRECTORIES = 20000
 MAX_ENTRIES = 30000
 
+_LANGUAGE_ALIASES = {
+    "en": "EN", "eng": "EN", "english": "EN", "en-us": "EN", "en-gb": "EN",
+    "tr": "TR", "tur": "TR", "turkish": "TR", "tr-tr": "TR",
+    "de": "DE", "ger": "DE", "german": "DE", "de-de": "DE",
+    "fr": "FR", "fre": "FR", "french": "FR", "fr-fr": "FR",
+    "es": "ES", "spa": "ES", "spanish": "ES", "es-es": "ES",
+    "it": "IT", "ita": "IT", "italian": "IT",
+    "pt": "PT", "por": "PT", "portuguese": "PT", "pt-br": "PT", "pt-pt": "PT",
+    "ru": "RU", "rus": "RU", "russian": "RU",
+    "ja": "JA", "jpn": "JA", "japanese": "JA", "jp": "JA",
+    "ko": "KO", "kor": "KO", "korean": "KO",
+    "zh": "ZH", "zho": "ZH", "chinese": "ZH", "zh-cn": "ZH", "zh-tw": "ZH",
+    "pl": "PL", "pol": "PL", "polish": "PL",
+    "nl": "NL", "dut": "NL", "dutch": "NL",
+    "ar": "AR", "ara": "AR", "arabic": "AR",
+    "hi": "HI", "hin": "HI", "hindi": "HI",
+    "id": "ID", "ind": "ID", "indonesian": "ID",
+    "uk": "UK", "ukr": "UK", "ukrainian": "UK",
+    "sv": "SV", "swe": "SV", "swedish": "SV",
+    "no": "NO", "nor": "NO", "norwegian": "NO",
+    "da": "DA", "dan": "DA", "danish": "DA",
+    "fi": "FI", "fin": "FI", "finnish": "FI",
+    "cs": "CS", "ces": "CS", "czech": "CS",
+    "hu": "HU", "hun": "HU", "hungarian": "HU",
+    "el": "EL", "ell": "EL", "greek": "EL",
+    "he": "HE", "heb": "HE", "hebrew": "HE",
+    "ro": "RO", "ron": "RO", "romanian": "RO",
+    "bg": "BG", "bul": "BG", "bulgarian": "BG",
+    "hr": "HR", "hrv": "HR", "croatian": "HR",
+    "sk": "SK", "slk": "SK", "slovak": "SK",
+    "sl": "SL", "slv": "SL", "slovenian": "SL",
+    "sr": "SR", "srp": "SR", "serbian": "SR",
+}
+
+
+def _language_code(value: str) -> str | None:
+    token = str(value).strip().casefold().replace("_", "-")
+    return _LANGUAGE_ALIASES.get(token)
+
+
+_LOCALE_DIRECTORY_NAMES = {
+    "locale", "locales", "lang", "langs", "language", "languages",
+    "localization", "translations", "text",
+}
+
+
+def _language_for_path(path: Path) -> str | None:
+    parts = list(path.parts)
+    locale_index = next(
+        (index for index, part in enumerate(parts[:-1]) if part.casefold() in _LOCALE_DIRECTORY_NAMES),
+        None,
+    )
+    if locale_index is not None:
+        for part in parts[locale_index + 1:]:
+            for candidate in (part.casefold().replace("_", "-"), *re.split(r"[^a-z0-9-]+", Path(part).stem.casefold())):
+                code = _language_code(candidate)
+                if code:
+                    return code
+    else:
+        for part in parts[:-1]:
+            token = part.casefold().replace("_", "-")
+            if len(token) > 3 or re.fullmatch(r"[a-z]{2,3}-[a-z]{2,4}", token):
+                code = _language_code(token)
+                if code:
+                    return code
+    if parts:
+        filename_stem = Path(parts[-1]).stem.casefold()
+        for candidate in re.split(r"[^a-z0-9-]+", filename_stem):
+            code = _language_code(candidate)
+            if code:
+                return code
+    return None
+
 
 class StaleSourceError(ValueError):
     """Raised when a game text changed after the translation workspace was scanned."""
@@ -74,8 +147,12 @@ def _entry(file: Path, root: Path, locator: str, value: str) -> TextEntry | None
     return TextEntry(entry_id, relative, locator, value)
 
 
-def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[TextEntry]:
+def scan_game_texts(
+    game_dir: str | Path, include_txt: bool = True, source_language: str = "EN"
+) -> list[TextEntry]:
+    """Scan supported text files, preferring the selected source-language locale."""
     root = Path(game_dir).resolve()
+    selected_language = _language_code(source_language) or str(source_language).upper()
     if not root.is_dir():
         raise ValueError("Oyun klasörü bulunamadı.")
     entries: list[TextEntry] = []
@@ -96,6 +173,9 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
             file = current_path / filename
             if file.is_symlink() or file.suffix.casefold() not in SUPPORTED:
                 continue
+            file_language = _language_for_path(file.relative_to(root))
+            if file_language and file_language != selected_language:
+                continue
             visited_files += 1
             if visited_files > MAX_FILES:
                 stop = True
@@ -112,21 +192,19 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
                 if suffix == ".json":
                     data = json.loads(text)
 
-                    def walk(node, path=()):
+                    stack = [(data, ())]
+                    while stack:
+                        node, path = stack.pop()
                         if isinstance(node, dict):
-                            for key, val in node.items():
-                                walk(val, path + (str(key),))
+                            stack.extend((value, path + (str(key),)) for key, value in reversed(list(node.items())))
                         elif isinstance(node, list):
-                            for index, val in enumerate(node):
-                                walk(val, path + (str(index),))
+                            stack.extend((value, path + (str(index),)) for index, value in reversed(list(enumerate(node))))
                         elif isinstance(node, str):
                             # JSON Pointer escaping makes unusual keys reversible.
                             locator = "" if not path else "/" + "/".join(part.replace("~", "~0").replace("/", "~1") for part in path)
                             item = _entry(file, root, locator, node)
                             if item:
                                 found.append(item)
-
-                    walk(data)
                 elif suffix == ".csv":
                     try:
                         dialect = csv.Sniffer().sniff(text[:8192], delimiters=",;\t|")
@@ -136,18 +214,18 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
                     if rows:
                         header = [x.casefold().strip() for x in rows[0]]
                         id_names = {"id", "key", "identifier", "translation", "target"}
-                        english_cols = [
+                        language_cols = [
                             i for i, name in enumerate(header)
-                            if re.fullmatch(r"(?:en|eng|english)(?:[-_ ].*)?", name)
+                            if _language_code(name.replace(" ", "-")) == selected_language
                         ]
                         source_cols = [
                             i for i, name in enumerate(header)
                             if name in {"source", "original", "text", "value", "string", "dialog", "dialogue", "description", "message"}
                             or any(token in name for token in ("source", "original", "dialogue", "description"))
                         ]
-                        text_cols = english_cols[:1] or source_cols[:1]
+                        text_cols = language_cols[:1] or source_cols[:1]
                         has_header = bool(text_cols) or any(name in id_names for name in header) or any(
-                            re.fullmatch(r"(?:[a-z]{2,3})(?:[-_][a-z]{2,4})?", name) for name in header
+                            _language_code(name.replace(" ", "-")) is not None for name in header
                         )
                         if not text_cols:
                             candidates = [i for i, name in enumerate(header) if name not in id_names]
@@ -176,7 +254,8 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
                         item = _entry(file, root, f"line[{line_index}]", line)
                         if item:
                             found.append(item)
-            except (ValueError, csv.Error, json.JSONDecodeError):
+            except (ValueError, csv.Error, json.JSONDecodeError, RecursionError):
+                # A single deeply nested or malformed localization file must not abort the game scan.
                 continue
             entries.extend(found)
             if len(entries) >= MAX_ENTRIES:
@@ -397,6 +476,18 @@ def _safe_workspace_path(value: str) -> Path:
     if ":" in value or chr(92) in value or candidate.is_absolute() or any(part in ("..", "") for part in candidate.parts):
         raise ValueError("Çalışma dosyasında güvenli olmayan hedef yolu.")
     return candidate
+
+
+def remove_incomplete_patch(path: str | Path) -> bool:
+    """Remove only Sarman-generated temporary patch archives, never arbitrary files."""
+    candidate = Path(path)
+    name = candidate.name.casefold()
+    if not (name.endswith(".zip.tmp") or name.endswith(".sarman-tmp")):
+        raise ValueError("Yalnızca .zip.tmp veya .sarman-tmp uzantılı yarım yama dosyaları silinebilir.")
+    if candidate.is_symlink() or not candidate.is_file():
+        return False
+    candidate.unlink()
+    return True
 
 
 def create_translation_patch(game_dir: str | Path, entries: Iterable[TextEntry], destination: str | Path, game_name: str) -> Path:
