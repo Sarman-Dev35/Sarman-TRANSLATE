@@ -288,6 +288,13 @@ class MainWindow(QMainWindow):
             QLabel#warning { color:#dca879; background:#211b16; border:1px solid #493323; border-radius:8px; padding:12px; }
         """)
 
+    def closeEvent(self, event):
+        if self.worker and self.worker.isRunning():
+            QMessageBox.information(self, APP_NAME, "Oyun taraması tamamlanana kadar uygulama kapatılamaz.")
+            event.ignore()
+            return
+        event.accept()
+
     @staticmethod
     def _settings_path():
         return Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Sarman" / "TRANSLATE" / "settings.json"
