@@ -340,10 +340,12 @@ class TranslationStudio(QDialog):
         if self.worker and self.worker.isRunning():
             return
         self.model_btn.setEnabled(False)
+        self.remove_model_btn.setEnabled(False)
         self.status.setText("Hy-MT2 İngilizce → Türkçe çeviri modeli indiriliyor…")
         self.worker = ModelInstallWorker(self)
         self.worker.completed.connect(self._model_installed)
         self.worker.failed.connect(self._model_install_failed)
+        self.worker.finished.connect(self.refresh_model_status)
         self.worker.progress.connect(self._model_download_progress)
         self.worker.start()
 
