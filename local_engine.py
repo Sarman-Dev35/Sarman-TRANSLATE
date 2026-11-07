@@ -58,12 +58,14 @@ DEFAULT_GLOSSARY = {
 
 def model_status() -> dict:
     try:
-        installed = MODEL_PATH.is_file() and MODEL_PATH.stat().st_size == MODEL_FILE_SIZE
+        present = MODEL_PATH.is_file()
+        installed = present and MODEL_PATH.stat().st_size == MODEL_FILE_SIZE
     except OSError:
+        present = False
         installed = False
     return {
         "installed": installed,
-        "present": MODEL_PATH.is_file(),
+        "present": present,
         "engine": "Tencent Hy-MT2 1.8B · GGUF Q4_K_M",
         "message": "Hy-MT2 çeviri modeli hazır." if installed else "Hy-MT2 1.8B çeviri modeli henüz indirilmedi.",
         "model_path": str(MODEL_PATH),
