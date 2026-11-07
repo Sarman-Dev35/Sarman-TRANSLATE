@@ -38,6 +38,8 @@ DOWNLOAD_CHUNK_SIZE = 4 * 1024 * 1024
 _LOCK = threading.RLock()
 _INFERENCE_LOCK = threading.Lock()
 _DOWNLOAD_LOCK = threading.Lock()
+_CACHE_LOCK = threading.RLock()
+_GLOSSARY_LOCK = threading.RLock()
 _MODEL = None
 _TOKEN_RE = re.compile(r"\{[^{}]+\}|\$\{[^{}]+\}|\$[A-Za-z_][A-Za-z0-9_]*|%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[a-zA-Z%]|\[[A-Za-z0-9_.:-]+\]|<[^>]+>|\\[nrt]|\\u[0-9a-fA-F]{4}")
 
@@ -225,20 +227,22 @@ def _cache_get(source: str, context: str = "", game_name: str = "") -> str | Non
     if not path.exists():
         return None
     try:
-        with closing(sqlite3.connect(path, timeout=5)) as db:
+        with _CACHE_LOCK, closing(sqlite3.connect(path, timeout=30)) as db:
+            db.execute("PRAGMA busy_timeout=30000")
             row = db.execute(
                 "SELECT translated FROM memory WHERE source_hash=?",
                 (_cache_key(source, context, game_name),),
             ).fetchone()
             return row[0] if row else None
-    except sqlite3.OperationalError:
+    except sqlite3.Error:
         return None
 
 
 def _cache_put(source: str, translated: str, context: str = "", game_name: str = "") -> None:
     path = _cache_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with closing(sqlite3.connect(path, timeout=10)) as db:
+    with _CACHE_LOCK, closing(sqlite3.connect(path, timeout=30)) as db:
+        db.execute("PRAGMA busy_timeout=30000")
         db.execute(
             "CREATE TABLE IF NOT EXISTS memory (source_hash TEXT PRIMARY KEY, source TEXT NOT NULL, translated TEXT NOT NULL)"
         )
