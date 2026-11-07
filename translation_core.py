@@ -230,7 +230,7 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
 
 def _safe_workspace_path(value: str) -> Path:
     candidate = Path(value)
-    if ":" in value or "\\\\" in value or candidate.is_absolute() or any(part in ("..", "") for part in candidate.parts):
+    if ":" in value or chr(92) in value or candidate.is_absolute() or any(part in ("..", "") for part in candidate.parts):
         raise ValueError("Çalışma dosyasında güvenli olmayan hedef yolu.")
     return candidate
 
