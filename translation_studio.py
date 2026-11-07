@@ -7,11 +7,92 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal, Qt, QTimer
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
-    QTableWidgetItem, QHeaderView, QMessageBox, QFileDialog, QProgressBar, QInputDialog
+    QTableWidgetItem, QHeaderView, QMessageBox, QFileDialog, QProgressBar, QLineEdit
 )
 
 from translation_core import TextEntry, scan_game_texts, load_workspace, save_workspace, build_translated_files, create_translation_patch, validate_translation
 from local_engine import translate_text, model_status, install_english_turkish_model, LocalTranslationError, glossary_items, set_glossary_term, delete_glossary_term
+
+
+class GlossaryDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Sarman · Terim Sözlüğü")
+        self.resize(560, 480)
+        root = QVBoxLayout(self)
+        title = QLabel("Oyun terimleri")
+        title.setStyleSheet("font-size:19px;font-weight:750;color:#e58a43")
+        root.addWidget(title)
+        root.addWidget(QLabel("Eklediğin karşılıklar bütün çevirilerde tutarlı biçimde kullanılır. Var olan terimi aynı İngilizce ifadeyle ekleyerek güncelleyebilirsin."))
+        self.table = QTableWidget(0, 2)
+        self.table.setHorizontalHeaderLabels(["İNGİLİZCE TERİM", "TÜRKÇE KARŞILIĞI"])
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        root.addWidget(self.table, 1)
+        fields = QHBoxLayout()
+        self.source_input = QLineEdit()
+        self.source_input.setPlaceholderText("İngilizce terim")
+        self.target_input = QLineEdit()
+        self.target_input.setPlaceholderText("Türkçe karşılığı")
+        fields.addWidget(self.source_input)
+        fields.addWidget(self.target_input)
+        root.addLayout(fields)
+        actions = QHBoxLayout()
+        add_btn = QPushButton("Terimi ekle / güncelle")
+        add_btn.setObjectName("primary")
+        add_btn.clicked.connect(self.add_term)
+        remove_btn = QPushButton("Seçileni sil")
+        remove_btn.clicked.connect(self.remove_term)
+        close_btn = QPushButton("Kapat")
+        close_btn.clicked.connect(self.accept)
+        actions.addWidget(add_btn)
+        actions.addWidget(remove_btn)
+        actions.addStretch()
+        actions.addWidget(close_btn)
+        root.addLayout(actions)
+        self.setStyleSheet("""
+            QDialog,QWidget{background:#0c0d10;color:#eeeae5;font-family:'Segoe UI';}
+            QTableWidget{background:#111216;border:1px solid #292a30;selection-background-color:#35271d;}
+            QHeaderView::section{background:#17181d;color:#e58a43;padding:9px;border:0;}
+            QLineEdit{background:#141519;border:1px solid #34353c;border-radius:7px;padding:9px;color:#fff;}
+            QPushButton{background:#1a1b20;border:1px solid #34353c;border-radius:7px;padding:9px 12px;}
+            QPushButton#primary{background:#e58a43;color:#1a120c;border:0;font-weight:800;}
+        """)
+        self.reload_terms()
+
+    def reload_terms(self):
+        terms = glossary_items()
+        self.table.setRowCount(len(terms))
+        for row, (source, target) in enumerate(terms):
+            self.table.setItem(row, 0, QTableWidgetItem(source))
+            self.table.setItem(row, 1, QTableWidgetItem(target))
+
+    def add_term(self):
+        source, target = self.source_input.text().strip(), self.target_input.text().strip()
+        if not source or not target:
+            QMessageBox.information(self, "Terim sözlüğü", "İki alanı da doldur.")
+            return
+        try:
+            set_glossary_term(source, target)
+            self.source_input.clear()
+            self.target_input.clear()
+            self.reload_terms()
+        except Exception as exc:
+            QMessageBox.warning(self, "Terim sözlüğü", str(exc))
+
+    def remove_term(self):
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "Terim sözlüğü", "Önce silmek istediğin terimi seç.")
+            return
+        source = self.table.item(row, 0).text()
+        answer = QMessageBox.question(self, "Terim silinsin mi?", f"'{source}' sözlükten kaldırılsın mı?",
+                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer == QMessageBox.Yes:
+            delete_glossary_term(source)
+            self.reload_terms()
 
 
 class TextScanWorker(QThread):
@@ -240,28 +321,7 @@ class TranslationStudio(QDialog):
                 QMessageBox.warning(self, "Kaydetme", str(exc))
 
     def manage_glossary(self):
-        while True:
-            items = glossary_items()
-            options = [f"{source}  →  {target}" for source, target in items]
-            choice, ok = QInputDialog.getItem(self, "Terim sözlüğü", "Oyun terimleri (eklemek için İptal):", options, 0, False)
-            if not ok:
-                source, ok_source = QInputDialog.getText(self, "Yeni terim", "İngilizce terim:")
-                if not ok_source:
-                    break
-                target, ok_target = QInputDialog.getText(self, "Yeni terim", "Türkçe karşılığı:")
-                if ok_target and source.strip() and target.strip():
-                    try:
-                        set_glossary_term(source, target)
-                    except Exception as exc:
-                        QMessageBox.warning(self, "Sözlük", str(exc))
-                break
-            index = options.index(choice)
-            source = items[index][0]
-            answer = QMessageBox.question(self, "Terimi sil", f"'{source}' özel sözlükten silinsin mi?",
-                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            if answer == QMessageBox.Yes:
-                delete_glossary_term(source)
-            break
+        GlossaryDialog(self).exec()
 
     def refresh_model_status(self):
         info = model_status()
