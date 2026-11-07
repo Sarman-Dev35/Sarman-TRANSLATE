@@ -424,8 +424,11 @@ class MainWindow(QMainWindow):
         self.table.setRowCount(len(items))
         for row, game in enumerate(items):
             patched = installed_patch_languages(game.path)
+            incomplete = incomplete_patch_installs(game.path)
             detected = " · ".join(game.detected_languages) if game.detected_languages else "Belirlenemedi"
             patch_status = " · ".join(code.upper() for code in sorted(patched)) + " yüklü" if patched else "Yüklü değil"
+            if incomplete:
+                patch_status += "  ·  Yarım kalan yükleme"
             status = f"{detected}  ·  {patch_status}"
             values = (game.name, game.platform, status)
             for col, value in enumerate(values):
