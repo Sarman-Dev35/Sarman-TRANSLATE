@@ -168,7 +168,7 @@ def uninstall_english_turkish_model() -> bool:
         removed = False
         for path in (MODEL_PATH, MODEL_PATH.with_suffix(MODEL_PATH.suffix + ".part")):
             try:
-                if path.is_file():
+                if path.is_file() or path.is_symlink():
                     path.unlink()
                     removed = True
             except OSError as exc:
