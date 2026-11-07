@@ -288,31 +288,43 @@ class TranslationStudio(QDialog):
         worker = self.sender()
         if worker is self.scan_worker:
             self.scan_worker = None
-            self.scan_btn.setEnabled(True)
+            self._scan_busy = False
+        self.scan_btn.setEnabled(not self._operation_busy and not (self.worker and self.worker.isRunning()))
         self.refresh_model_status()
 
     def scan_completed(self, found):
         worker = self.sender()
-        if worker is not None and worker is not self.scan_worker:
+        if worker is not None and (
+            worker is not self.scan_worker
+            or getattr(worker, "generation", None) != self._scan_generation
+        ):
             return
-        existing = {entry.entry_id: entry for entry in self.entries}
-        merged = []
-        for entry in found:
-            previous = existing.get(entry.entry_id)
-            if previous and previous.source == entry.source:
-                entry.translated = previous.translated
-                entry.status = previous.status
-            merged.append(entry)
-        self.entries = merged
-        self.render()
-        self.save()
-        self.status.setText(f"Tarama tamamlandı · {len(self.entries)} metin bulundu.")
-        self._set_scan_busy(False)
-        self.refresh_model_status()
+        try:
+            existing = {entry.entry_id: entry for entry in self.entries}
+            merged = []
+            for entry in found:
+                previous = existing.get(entry.entry_id)
+                if previous and previous.source == entry.source:
+                    entry.translated = previous.translated
+                    entry.status = previous.status
+                merged.append(entry)
+            self.entries = merged
+            self.render()
+            self.save()
+            self.status.setText(f"Tarama tamamlandı · {len(self.entries)} metin bulundu.")
+        except Exception as exc:
+            self.status.setText("Tarama sonuçları arayüze aktarılamadı.")
+            QMessageBox.warning(self, "Metin tarama", f"Tarama tamamlandı ancak sonuçlar işlenemedi:\\n{exc}")
+        finally:
+            self._set_scan_busy(False)
+            self.refresh_model_status()
 
     def scan_failed(self, message):
         worker = self.sender()
-        if worker is not None and worker is not self.scan_worker:
+        if worker is not None and (
+            worker is not self.scan_worker
+            or getattr(worker, "generation", None) != self._scan_generation
+        ):
             return
         self._set_scan_busy(False)
         self.status.setText("Metin taraması başarısız.")
@@ -331,15 +343,19 @@ class TranslationStudio(QDialog):
 
     def render(self):
         self._rendering = True
-        self.table.setRowCount(len(self.entries))
-        for row, entry in enumerate(self.entries):
-            values = (entry.status, f"{entry.file}\n{entry.locator}", entry.source, entry.translated)
-            for col, value in enumerate(values):
-                cell = QTableWidgetItem(value)
-                if col in (0, 1, 2):
-                    cell.setFlags(cell.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                self.table.setItem(row, col, cell)
-        self._rendering = False
+        self.table.setUpdatesEnabled(False)
+        try:
+            self.table.setRowCount(len(self.entries))
+            for row, entry in enumerate(self.entries):
+                values = (entry.status, f"{entry.file}\\n{entry.locator}", entry.source, entry.translated)
+                for col, value in enumerate(values):
+                    cell = QTableWidgetItem(value)
+                    if col in (0, 1, 2):
+                        cell.setFlags(cell.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                    self.table.setItem(row, col, cell)
+        finally:
+            self.table.setUpdatesEnabled(True)
+            self._rendering = False
 
     def _cell_edited(self, cell):
         if self._rendering or cell.column() != 3 or cell.row() >= len(self.entries):
@@ -528,7 +544,7 @@ class TranslationStudio(QDialog):
         worker = self.sender()
         if worker is self.worker:
             self.worker = None
-        self._operation_busy = False
+            self._operation_busy = False
         self.refresh_model_status()
 
     def _set_busy(self, busy):
