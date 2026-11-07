@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
-SUPPORTED = {".json", ".csv", ".txt"}
+SUPPORTED = {".json", ".csv", ".txt", ".ini"}
 SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "binaries", "bin", "cache", "caches", "logs", "crashdumps"}
 MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_FILES = 5000
@@ -102,6 +102,18 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
                             if ci < len(row):
                                 item = _entry(file, root, f"row[{ri}].col[{ci}]", row[ci])
                                 if item: found.append(item)
+            elif suffix == ".ini":
+                for line_index, line in enumerate(text.splitlines()):
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith((";", "#", "[")) or "=" not in line:
+                        continue
+                    key, raw_value = line.split("=", 1)
+                    value = raw_value.strip()
+                    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+                        value = value[1:-1]
+                    item = _entry(file, root, f"line[{line_index}]", value)
+                    if item:
+                        found.append(item)
             elif suffix == ".txt" and include_txt:
                 for i, line in enumerate(text.splitlines()):
                     item = _entry(file, root, f"line[{i}]", line)
@@ -213,6 +225,23 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                 buffer = io.StringIO(newline="")
                 csv.writer(buffer, lineterminator="\n").writerows(rows)
                 encoded = buffer.getvalue()
+            elif suffix == ".ini":
+                lines = raw.splitlines()
+                for item in items:
+                    match = re.fullmatch(r"line\\[(\\d+)\\]", item.locator)
+                    if not match:
+                        continue
+                    line_index = int(match.group(1))
+                    if line_index >= len(lines) or "=" not in lines[line_index]:
+                        continue
+                    key, raw_value = lines[line_index].split("=", 1)
+                    leading = raw_value[:len(raw_value) - len(raw_value.lstrip())]
+                    trailing = raw_value[len(raw_value.rstrip()):]
+                    value = raw_value.strip()
+                    quote = value[0] if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"') else ""
+                    translated = f"{quote}{item.translated}{quote}" if quote else item.translated
+                    lines[line_index] = f"{key}={leading}{translated}{trailing}"
+                encoded = "\\n".join(lines) + ("\\n" if raw.endswith(("\\n", "\\r")) else "")
             elif suffix == ".txt":
                 lines = raw.splitlines()
                 for item in items:
