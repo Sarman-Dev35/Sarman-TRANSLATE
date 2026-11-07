@@ -6,9 +6,9 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import os
 
-from PySide6.QtCore import Qt, QThread, Signal, QTimer, QSettings, QPropertyAnimation, QEasingCurve, QObject, Property, QSize
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QSettings, QSize
 from PySide6.QtGui import QFont, QIcon, QPixmap
-from game_visuals import GameArtService, palette_for_game, interpolate_palette, theme_stylesheet, make_placeholder_cover
+from game_visuals import GameArtService, WARM_PALETTE, theme_stylesheet, make_placeholder_cover
 from PySide6.QtWidgets import (
     QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QMessageBox, QPushButton, QProgressBar, QTableWidget,
@@ -98,20 +98,6 @@ class StatCard(QFrame):
         self.value.setObjectName("statValue")
         layout.addWidget(label)
         layout.addWidget(self.value)
-
-
-class ColorTransition(QObject):
-    valueChanged = Signal(float)
-    def __init__(self):
-        super().__init__()
-        self._value = 1.0
-    @Property(float)
-    def value(self):
-        return self._value
-    @value.setter
-    def value(self, value):
-        self._value = float(value)
-        self.valueChanged.emit(self._value)
 
 
 class MainWindow(QMainWindow):
@@ -265,11 +251,11 @@ class MainWindow(QMainWindow):
         self.hero_cover.setScaledContents(True)
         hero_layout.addWidget(self.hero_cover)
         hero_text = QVBoxLayout()
-        self.hero_kicker = QLabel("SARMAN GAME PROFILE  ·  SMART THEME")
+        self.hero_kicker = QLabel("SARMAN GAME PROFILE")
         self.hero_kicker.setObjectName("eyebrow")
         self.hero_title = QLabel("Bir oyun seç")
         self.hero_title.setObjectName("heroTitle")
-        self.hero_meta = QLabel("Oyun kapakları ve renkleri seçimine göre hazırlanır.")
+        self.hero_meta = QLabel("Oyun kapakları internetten bulunur ve cihazında saklanır.")
         self.hero_meta.setObjectName("muted")
         self.hero_meta.setWordWrap(True)
         hero_text.addWidget(self.hero_kicker)
@@ -479,9 +465,15 @@ class MainWindow(QMainWindow):
             name_cell = QTableWidgetItem(game.name)
             name_cell.setToolTip(f"{game.name}\n{game.platform}\n{game.path}")
             name_cell.setFont(QFont("Segoe UI", 11, QFont.Bold))
-            cover = make_placeholder_cover(game.name, game.platform, *palette_for_game(game.name))
-            name_cell.setIcon(QIcon(QPixmap.fromImage(cover)))
             name_cell.setData(Qt.UserRole, game.path)
+            cached = self.art_service.cached_cover(game) if hasattr(self, "art_service") else None
+            if cached is not None and not cached.isNull():
+                name_cell.setIcon(QIcon(QPixmap.fromImage(cached).scaled(
+                    210, 118, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
+                )))
+            else:
+                cover = make_placeholder_cover(game.name, game.platform, *WARM_PALETTE, size=(420, 236))
+                name_cell.setIcon(QIcon(QPixmap.fromImage(cover)))
             self.table.setItem(row, 0, name_cell)
 
             platform_cell = QTableWidgetItem(game.platform)
@@ -490,7 +482,7 @@ class MainWindow(QMainWindow):
             status_cell = QTableWidgetItem(status)
             status_cell.setToolTip(status)
             self.table.setItem(row, 2, status_cell)
-            self.table.setRowHeight(row, 124)
+            self.table.setRowHeight(row, 140)
             if hasattr(self, "art_service"):
                 self.art_service.request(game)
 
@@ -502,38 +494,22 @@ class MainWindow(QMainWindow):
         self.table.blockSignals(False)
         self.selection_changed()
 
-    def _game_art_ready(self, path, image, accent, secondary):
-        pixmap = QPixmap.fromImage(image).scaled(176, 96, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+    def _game_art_ready(self, path, image):
+        if image.isNull():
+            return
+        pixmap = QPixmap.fromImage(image).scaled(
+            210, 118, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
+        )
         for row in range(self.table.rowCount()):
             item = self.table.item(row, 0)
             if item and item.data(Qt.UserRole) == path:
                 item.setIcon(QIcon(pixmap))
                 break
-        game = next((item for item in self.games if item.path == path), None)
-        if game:
-            palette = palette_for_game(game.name)
-            if palette == ("#f06a3d", "#a92f45"):
-                palette = (accent, secondary)
-            game.theme_palette = palette
-            selected = self.selected_game()
-            if selected and selected.path == path:
-                self.hero_cover.setPixmap(QPixmap.fromImage(image).scaled(220, 124, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
-                self._animate_theme(palette)
-
-    def _animate_theme(self, palette):
-        if palette == self._theme_to:
-            return
-        self._theme_animation.stop()
-        self._theme_from = interpolate_palette(self._theme_from, self._theme_to, self._theme_value)
-        self._theme_to = palette
-        self._theme_animation.setStartValue(0.0)
-        self._theme_animation.setEndValue(1.0)
-        self._theme_animation.start()
-
-    def _apply_theme_frame(self, value):
-        self._theme_value = value
-        accent, secondary = interpolate_palette(self._theme_from, self._theme_to, value)
-        self.apply_style(accent, secondary)
+        selected = self.selected_game()
+        if selected and selected.path == path:
+            self.hero_cover.setPixmap(QPixmap.fromImage(image).scaled(
+                320, 180, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
+            ))
 
     def _language_setting_key(self, game):
         import hashlib
@@ -568,16 +544,20 @@ class MainWindow(QMainWindow):
     def selection_changed(self):
         game = self.selected_game()
         if game:
-            if game.path != self._active_game_path:
-                self._active_game_path = game.path
-                self.hero_title.setText(game.name)
-                self.hero_meta.setText(f"{game.platform}  ·  {game.path}")
-                self.hero_cover.setPixmap(QPixmap.fromImage(make_placeholder_cover(
-                    game.name, game.platform, *palette_for_game(game.name)
-                )))
-                self._animate_theme(getattr(game, "theme_palette", palette_for_game(game.name)))
-                if hasattr(self, "art_service"):
-                    self.art_service.request(game)
+            self.hero_title.setText(game.name)
+            self.hero_meta.setText(f"{game.platform}  ·  {game.path}")
+            cached = self.art_service.cached_cover(game) if hasattr(self, "art_service") else None
+            if cached is not None and not cached.isNull():
+                self.hero_cover.setPixmap(QPixmap.fromImage(cached).scaled(
+                    320, 180, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
+                ))
+            else:
+                placeholder = make_placeholder_cover(
+                    game.name, game.platform, *WARM_PALETTE, size=(640, 360)
+                )
+                self.hero_cover.setPixmap(QPixmap.fromImage(placeholder))
+            if hasattr(self, "art_service"):
+                self.art_service.request(game)
             self.studio_btn.setEnabled(True)
             self.target_label.setText(f"{game.name}  ·  {game.path}")
             self.install_btn.setEnabled(bool(self.patch_path))
