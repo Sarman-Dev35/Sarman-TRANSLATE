@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import patch_manager
-from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest
+from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest, installed_patch_languages
 from gemini_translator import GeminiTranslationError, translate_batch
 from translation_core import (
     TextEntry, scan_game_texts, validate_translation, save_workspace,
@@ -155,7 +155,9 @@ class PatchManagerTests(unittest.TestCase):
             with patch.object(patch_manager, "APP_DATA", root / "appdata"):
                 install_patch(archive, game)
                 self.assertEqual(target.read_text(encoding="utf-8"), "translated")
+                self.assertEqual(installed_patch_languages(game), {"tr"})
                 self.assertEqual(uninstall_latest(game), "Demo TR")
+                self.assertEqual(installed_patch_languages(game), set())
                 self.assertEqual(target.read_text(encoding="utf-8"), "original")
 
 
