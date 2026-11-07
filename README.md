@@ -38,7 +38,7 @@ Uygulama platform parolası istemez, istemci veritabanlarını kırmaz, lisans/D
 6. Çevirileri tabloda elle düzenleyip gözden geçir.
 7. **Yama ZIP'i oluştur** ile dışa aktar.
 
-Çeviri çalışma kayıtları `%LOCALAPPDATA%\Sarman\TRANSLATE\workspaces` altında tutulur. API anahtarı `keyring` üzerinden Windows kimlik bilgisi kasasına yazılır; uygulama kaynak koduna, oyun dosyalarına veya GitHub'a eklenmez.
+Çeviri çalışma kayıtları `%LOCALAPPDATA%\Sarman\TRANSLATE\workspaces` altında tutulur. API anahtarı yalnızca Windows Credential Manager (WinVaultKeyring) üzerinden saklanır; güvenli backend yoksa kaydetme reddedilir. Anahtar kaynak koduna, oyun dosyalarına veya GitHub'a eklenmez. Beklenmeyen uygulama hataları `%LOCALAPPDATA%\Sarman\TRANSLATE\logs\application.log` dosyasına dönen günlüklerle kaydedilir.
 
 Gemini kotası Google Cloud projesine ve modele göre değişir. Aynı projede yeni API anahtarı oluşturmak proje kotasını artırmaz. Gerçek kota yenileme zamanı API tarafından kesin verilmediğinde uygulama tahmini geri sayım göstermez. Ücretsiz kullanımın kapsamı Google tarafından belirlenir; ücretsiz erişim veya limitsiz kullanım garantisi yoktur. Gemini model listesi `models.list` sayfaları üzerinden alınır ve `generateContent` destekleyen modeller filtrelenir; listelenen modelin ücretsiz veya bu projede kullanılabilir olduğu garanti edilmez.
 
