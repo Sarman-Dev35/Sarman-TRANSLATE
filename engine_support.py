@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import os
 
 TEXT_SUFFIXES = {".json", ".csv", ".txt", ".ini"}
 
@@ -27,7 +28,7 @@ def inspect_game_engine(game_dir: str | Path) -> EngineReport:
     supported = 0
     native = 0
     visited = 0
-    for current, dirs, files in __import__("os").walk(root, topdown=True, followlinks=False):
+    for current, dirs, files in os.walk(root, topdown=True, followlinks=False):
         dirs[:] = [d for d in dirs if d.casefold() not in {
             ".git", "cache", "caches", "logs", "crashdumps", "node_modules", "__pycache__"
         } and not (Path(current) / d).is_symlink()]
