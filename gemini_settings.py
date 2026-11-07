@@ -7,6 +7,8 @@ import webbrowser
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
+from quota_testing import set_quota_test, quota_test_remaining, clear_quota_test
+
 import keyring
 from PySide6.QtCore import QTimer, Qt, QThread, Signal
 from PySide6.QtWidgets import (
@@ -61,6 +63,11 @@ class GeminiSettingsDialog(QDialog):
         self.timer.timeout.connect(self.update_countdown)
         self.build_ui()
         self.load_key()
+        remaining = quota_test_remaining()
+        if remaining:
+            self.deadline = datetime.now(timezone.utc) + timedelta(seconds=remaining)
+            self.timer.start()
+            self.update_countdown()
         self.setStyleSheet("""
             QDialog, QWidget { background:#0c0d10; color:#eeeae5; font-family:'Segoe UI'; font-size:13px; }
             QLabel#title { font-size:22px; font-weight:750; }
@@ -121,7 +128,7 @@ class GeminiSettingsDialog(QDialog):
         root.addWidget(self.api_status)
 
         root.addWidget(QLabel("Kota uyarısı test komutları"))
-        help_text = QLabel("Geliştirici testi içindir. Komutları aşağıya yazıp Enter'a basarak kota uyarısını ve geri sayımı taklit edebilirsin. Gerçek API kotanı değiştirmez.")
+        help_text = QLabel("Geliştirici testi içindir. Komutları yazıp Enter'a bas. Süre devam ederken Çeviri Atölyesi'nde çeviriyi başlatırsan kuyruk API çağrısı yapmadan duraklatılır. Böylece gerçek Gemini kotası tüketilmeden duraklatma/kaydetme akışını test edebilirsin.")
         help_text.setObjectName("muted")
         help_text.setWordWrap(True)
         root.addWidget(help_text)
@@ -233,7 +240,8 @@ class GeminiSettingsDialog(QDialog):
         if seconds is None:
             self.countdown.setText("Komut tanınmadı. Komutları aynen yazıp tekrar dene.")
             return
-        self.deadline = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+        deadline_timestamp = set_quota_test(seconds)
+        self.deadline = datetime.fromtimestamp(deadline_timestamp, timezone.utc)
         self.countdown.setText("TEST MODU — Çeviri geçici olarak duraklatıldı. Çalışman güvende; tamamlanan ilerleme kaydedildi. Yeni bir API anahtarı ekleyebilir veya bekleyebilirsin.")
         self.timer.start()
         self.update_countdown()
@@ -250,5 +258,6 @@ class GeminiSettingsDialog(QDialog):
         )
         if remaining <= 0:
             self.timer.stop()
+            clear_quota_test()
             self.countdown.setText("TEST TAMAMLANDI — Bekleme süresi sona erdi. Çeviriye devam etme davranışını şimdi test edebilirsin. Gerçek API kotası etkilenmedi.")
             self.deadline = None
