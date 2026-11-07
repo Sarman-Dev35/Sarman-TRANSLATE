@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from translation_core import TextEntry, scan_game_texts, load_workspace, save_workspace, build_translated_files, create_translation_patch, validate_translation
-from local_engine import translate_text, model_status, install_english_turkish_model, uninstall_english_turkish_model, LocalTranslationError, glossary_items, set_glossary_term, delete_glossary_term
+from local_engine import APP_DATA, translate_text, model_status, install_english_turkish_model, uninstall_english_turkish_model, LocalTranslationError, glossary_items, set_glossary_term, delete_glossary_term
 
 
 class GlossaryDialog(QDialog):
@@ -99,9 +99,10 @@ class TextScanWorker(QThread):
     completed = Signal(list)
     failed = Signal(str)
 
-    def __init__(self, game_dir, parent=None):
+    def __init__(self, game_dir, source_language="EN", parent=None):
         super().__init__(parent)
         self.game_dir = str(game_dir)
+        self.source_language = str(source_language or "EN").upper()
 
     def run(self):
         try:
@@ -116,8 +117,8 @@ class TranslateWorker(QThread):
     failed = Signal(str)
     completed = Signal()
 
-    def __init__(self, entries, indices, game_name):
-        super().__init__()
+    def __init__(self, entries, indices, game_name, parent=None):
+        super().__init__(parent)
         self.entries = entries
         self.indices = indices
         self.game_name = game_name
@@ -164,12 +165,15 @@ class ModelInstallWorker(QThread):
 
 
 class TranslationStudio(QDialog):
-    def __init__(self, game, parent=None):
+    def __init__(self, game, parent=None, source_language="EN"):
         super().__init__(parent)
         self.game = game
+        self.source_language = str(source_language or "EN").upper()
         self.entries: list[TextEntry] = []
         game_identity = hashlib.sha256(str(Path(game.path).resolve()).casefold().encode("utf-8")).hexdigest()[:10]
-        self.workspace_path = Path.home() / "AppData" / "Local" / "Sarman" / "TRANSLATE" / "workspaces" / (self._safe_name(game.name) + "-" + game_identity + ".json")
+        language_suffix = "" if self.source_language == "EN" else "-" + self._safe_name(self.source_language).lower()
+        self.workspace_path = APP_DATA / "workspaces" / (self._safe_name(game.name) + "-" + game_identity + language_suffix + ".json")
+        self._operation_busy = False
         self.worker = None
         self.scan_worker = None
         self._scan_generation = 0
@@ -193,7 +197,14 @@ class TranslationStudio(QDialog):
         title = QLabel(f"{self.game.name}  /  ÇEVİRİ ATÖLYESİ")
         title.setStyleSheet("font-size:20px;font-weight:800;color:#e58a43")
         root.addWidget(title)
-        root.addWidget(QLabel("Desteklenen metin dosyaları salt okunur biçimde taranır. Orijinal oyun dosyaları çeviri sırasında değiştirilmez."))
+        self.language_label = QLabel(
+            f"KAYNAK DİL: {self.source_language}  →  HEDEF DİL: TÜRKÇE"
+            + ("  ·  Otomatik model desteği mevcut." if self.source_language == "EN"
+               else "  ·  Otomatik model şu anda yalnızca İngilizce kaynak metinleri destekliyor.")
+        )
+        self.language_label.setStyleSheet("color:#b9a18d;font-weight:700;padding:4px 0;")
+        root.addWidget(self.language_label)
+        root.addWidget(QLabel("Seçilen kaynak diline ait açık metin dosyaları taranır. Orijinal oyun dosyaları çeviri sırasında değiştirilmez."))
         actions = QHBoxLayout()
         self.scan_btn = QPushButton("Metinleri tara")
         self.scan_btn.clicked.connect(self.scan)
@@ -203,7 +214,7 @@ class TranslationStudio(QDialog):
         self.export_btn.clicked.connect(self.export_patch)
         self.glossary_btn = QPushButton("Terim sözlüğü")
         self.glossary_btn.clicked.connect(self.manage_glossary)
-        self.model_btn = QPushButton("Çeviri modelini indir · 1,13 GB")
+        self.model_btn = QPushButton("Modeli indir · 1,13 GB")
         self.model_btn.clicked.connect(self.install_model)
         self.remove_model_btn = QPushButton("Modeli cihazdan kaldır")
         self.remove_model_btn.clicked.connect(self.remove_model)
@@ -258,7 +269,7 @@ class TranslationStudio(QDialog):
         self.status.setText("Oyun metinleri arka planda taranıyor…")
         self._scan_generation += 1
         generation = self._scan_generation
-        worker = TextScanWorker(self.game.path, self)
+        worker = TextScanWorker(self.game.path, self.source_language, self)
         self.scan_worker = worker
         worker.generation = generation
         worker.completed.connect(self.scan_completed)
@@ -346,13 +357,25 @@ class TranslationStudio(QDialog):
 
     def refresh_model_status(self):
         info = model_status()
-        self.model_status_label.setText(info["message"] + "  ·  İlk kurulum internet gerektirir; sonrasında çevrimdışı çalışır.")
+        self.model_status_label.setText(
+            info["message"] + "  ·  " + info.get("model_path", "")
+            + "  ·  İlk kurulum internet gerektirir; sonrasında çevrimdışı çalışır."
+        )
         self.model_btn.setVisible(not info["installed"])
-        self.model_btn.setEnabled(not info["installed"] and not (self.worker and self.worker.isRunning()))
-        has_model_files = info.get("present", False) or info.get("partial_present", False)
+        if info.get("partial_present"):
+            self.model_btn.setText("İndirmeye devam et")
+        elif info.get("present"):
+            self.model_btn.setText("Bozuk modeli yeniden indir")
+        else:
+            self.model_btn.setText("Modeli indir · 1,13 GB")
+        busy = self._operation_busy or bool(self.worker and self.worker.isRunning())
+        self.model_btn.setEnabled(not info["installed"] and not busy)
+        has_model_files = bool(info.get("present") or info.get("partial_present"))
         self.remove_model_btn.setVisible(has_model_files)
-        self.remove_model_btn.setEnabled(has_model_files and not (self.worker and self.worker.isRunning()))
-        self.translate_btn.setEnabled(info["installed"] and bool(self.entries))
+        self.remove_model_btn.setEnabled(has_model_files and not busy)
+        self.translate_btn.setEnabled(
+            info["installed"] and bool(self.entries) and self.source_language == "EN" and not busy
+        )
 
     def install_model(self):
         if self.worker and self.worker.isRunning():
@@ -367,7 +390,8 @@ class TranslationStudio(QDialog):
         self.worker = ModelInstallWorker(self)
         self.worker.completed.connect(self._model_installed)
         self.worker.failed.connect(self._model_install_failed)
-        self.worker.finished.connect(self.refresh_model_status)
+        self.worker.finished.connect(self._worker_thread_finished)
+        self.worker.finished.connect(self.worker.deleteLater)
         self.worker.progress.connect(self._model_download_progress)
         self.worker.start()
 
@@ -422,6 +446,13 @@ class TranslationStudio(QDialog):
         QMessageBox.warning(self, "Çeviri modeli", message)
 
     def translate_pending(self):
+        if self.source_language != "EN":
+            QMessageBox.information(
+                self, "Kaynak dil desteklenmiyor",
+                "Bu sürümdeki Hy-MT2 modeli yalnızca İngilizce → Türkçe çeviri yapabiliyor. "
+                "Seçili dil dosyalarını tarayabilir ve elle çevirebilirsin; otomatik çeviri için İngilizce seç."
+            )
+            return
         info = model_status()
         if not info["installed"]:
             QMessageBox.information(self, "Çeviri modeli", "Önce yaklaşık 1,13 GB boyutundaki Hy-MT2 çeviri modelini indir.")
@@ -432,11 +463,13 @@ class TranslationStudio(QDialog):
             return
         self._set_busy(True)
         self.progress.setRange(0, len(indices))
-        self.worker = TranslateWorker(self.entries, indices, self.game.name)
+        self.worker = TranslateWorker(self.entries, indices, self.game.name, self)
         self.worker.progress.connect(self._translation_progress)
         self.worker.row_done.connect(self._translation_done)
         self.worker.failed.connect(self._translation_failed)
         self.worker.completed.connect(self._translation_completed)
+        self.worker.finished.connect(self._worker_thread_finished)
+        self.worker.finished.connect(self.worker.deleteLater)
         self.worker.start()
 
     def _translation_done(self, index, result):
@@ -470,10 +503,23 @@ class TranslationStudio(QDialog):
         self.save()
         self.status.setText("Yapay zekâ çevirisi tamamlandı. Terimleri ve kelime oyunlarını gözden geçir.")
 
+    def _worker_thread_finished(self):
+        worker = self.sender()
+        if worker is self.worker:
+            self.worker = None
+        self._operation_busy = False
+        self.refresh_model_status()
+
     def _set_busy(self, busy):
-        for button in (self.scan_btn, self.translate_btn, self.export_btn, self.model_btn, self.remove_model_btn, self.glossary_btn):
-            button.setEnabled(not busy)
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers if busy else (QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed))
+        self._operation_busy = busy
+        self.scan_btn.setEnabled(not busy and not (self.scan_worker and self.scan_worker.isRunning()))
+        self.export_btn.setEnabled(not busy and bool(self.entries))
+        self.glossary_btn.setEnabled(not busy)
+        self.table.setEditTriggers(
+            QTableWidget.NoEditTriggers if busy
+            else (QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed)
+        )
+        self.refresh_model_status()
 
     def closeEvent(self, event):
         if (self.worker and self.worker.isRunning()) or (self.scan_worker and self.scan_worker.isRunning()):
