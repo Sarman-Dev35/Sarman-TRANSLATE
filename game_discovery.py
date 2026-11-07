@@ -19,7 +19,7 @@ class Game:
 def _normal(path: Path) -> str:
     try:
         return os.path.normcase(str(path.resolve()))
-    except OSError:
+    except (OSError, RuntimeError, ValueError):
         return os.path.normcase(os.path.abspath(str(path)))
 
 def _steam_roots() -> set[Path]:
@@ -265,7 +265,10 @@ def discover_games(extra_roots: Iterable[str] = ()) -> list[Game]:
     unique: dict[str, Game] = {}
     priority = ("Steam", "Epic Games", "Microsoft Store", "Xbox", "Windows oyun kaydı")
     for game in discovered:
-        key = _normal(Path(game.path))
+        try:
+            key = _normal(Path(game.path))
+        except (OSError, RuntimeError, ValueError, TypeError):
+            continue
         existing = unique.get(key)
         if existing is None:
             unique[key] = game
