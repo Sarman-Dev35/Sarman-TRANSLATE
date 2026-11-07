@@ -50,6 +50,25 @@ class TranslationCoreTests(unittest.TestCase):
         self.assertEqual(result["row1"], "Merhaba {player}")
         self.assertEqual(result["row2"], "Yükle %s")
 
+    def test_gemini_falls_back_when_json_response_mode_is_unsupported(self):
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self):
+                payload = {"candidates": [{"content": {"parts": [{"text": json.dumps({
+                    "translations": [{"id": "fallback-row", "text": "Merhaba"}]
+                })}]}}]}
+                return json.dumps(payload).encode("utf-8")
+        error = urllib.error.HTTPError(
+            "https://generativelanguage.googleapis.com", 400, "Bad Request", {},
+            io.BytesIO(b"responseMimeType application/json is not supported")
+        )
+        with patch("gemini_translator.urllib.request.urlopen", side_effect=[error, Response()]) as request:
+            result = translate_batch("fake-key", "gemini-test", [("fallback-row", "Hello")])
+        self.assertEqual(result["fallback-row"], "Merhaba")
+        self.assertEqual(request.call_count, 2)
+        self.assertNotIn("application/json", request.call_args_list[1].args[0].data.decode("utf-8"))
+
     def test_gemini_retries_transient_http_408(self):
         class Response:
             def __enter__(self): return self
