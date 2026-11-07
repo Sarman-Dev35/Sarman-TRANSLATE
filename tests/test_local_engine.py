@@ -38,6 +38,41 @@ class LocalEngineTests(unittest.TestCase):
         self.assertIn("1,13 GB", local_engine.model_status()["download_size"])
         self.assertIn("Hy-MT2", local_engine.model_status()["engine"])
 
+    def test_model_inference_is_serialized_across_translation_threads(self):
+        import threading
+        import time
+
+        class FakeModel:
+            def __init__(self):
+                self.guard = threading.Lock()
+                self.active = 0
+                self.max_active = 0
+
+            def __call__(self, prompt, **kwargs):
+                with self.guard:
+                    self.active += 1
+                    self.max_active = max(self.max_active, self.active)
+                time.sleep(0.04)
+                with self.guard:
+                    self.active -= 1
+                return {"choices": [{"text": "Kapıyı aç"}]}
+
+        fake = FakeModel()
+        results = []
+        with patch.object(local_engine, "_get_model", return_value=fake), patch.object(
+            local_engine, "_cache_get", return_value=None
+        ), patch.object(local_engine, "_cache_put"):
+            threads = [
+                threading.Thread(target=lambda value=value: results.append(local_engine.translate_text(value)))
+                for value in ("Open the door", "Unlock the gate")
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=5)
+        self.assertEqual(len(results), 2)
+        self.assertEqual(fake.max_active, 1)
+
     def test_glossary_change_invalidates_translation_memory(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(local_engine, "APP_DATA", Path(tmp)):
             local_engine._cache_put("Continue", "Devam")
