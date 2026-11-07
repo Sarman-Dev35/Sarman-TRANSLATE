@@ -62,6 +62,7 @@ class MainWindow(QMainWindow):
         self.custom_roots = self.load_custom_roots()
         self.worker = None
         self.patch_path: str | None = None
+        self.patch_manifest: dict | None = None
         self.build_ui()
         self.apply_style()
 
@@ -412,17 +413,23 @@ class MainWindow(QMainWindow):
         try:
             manifest = inspect_patch(filename)
             self.patch_path = filename
+            self.patch_manifest = manifest
             self.patch_file_label.setText(filename)
             self.patch_info.setText(f"{manifest['name']}  ·  Sürüm {manifest['version']}  ·  {len(manifest['files'])} dosya")
             self.install_btn.setEnabled(self.selected_game() is not None)
         except PatchError as exc:
             self.patch_path = None
+            self.patch_manifest = None
             self.install_btn.setEnabled(False)
             QMessageBox.warning(self, APP_NAME, str(exc))
 
     def apply_patch(self):
         game = self.selected_game()
         if not game or not self.patch_path:
+            return
+        target_game = (self.patch_manifest or {}).get("target_game")
+        if target_game and target_game.casefold() != game.name.casefold():
+            QMessageBox.warning(self, APP_NAME, f"Bu yama '{target_game}' için hazırlanmış; seçili oyun '{game.name}'. Yanlış oyuna yükleme engellendi.")
             return
         answer = QMessageBox.question(self, "Yama yüklensin mi?",
             f"'{game.name}' klasörüne dosya yazılacak. Mevcut dosyalar yedeklenecek. Devam edilsin mi?",
