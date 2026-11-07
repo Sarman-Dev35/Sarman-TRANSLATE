@@ -57,17 +57,21 @@ DEFAULT_GLOSSARY = {
 
 
 def model_status() -> dict:
+    partial_path = MODEL_PATH.with_suffix(MODEL_PATH.suffix + ".part")
     try:
         present = MODEL_PATH.is_file()
+        partial_present = partial_path.is_file()
         installed = present and MODEL_PATH.stat().st_size == MODEL_FILE_SIZE
     except OSError:
         present = False
+        partial_present = False
         installed = False
     return {
         "installed": installed,
         "present": present,
+        "partial_present": partial_present,
         "engine": "Tencent Hy-MT2 1.8B · GGUF Q4_K_M",
-        "message": ("Hy-MT2 çeviri modeli hazır." if installed else "Model dosyası eksik veya bozuk; kaldırıp yeniden indir." if present else "Hy-MT2 1.8B çeviri modeli henüz indirilmedi."),
+        "message": ("Hy-MT2 çeviri modeli hazır." if installed else "Eksik model indirmesi bulundu; kaldığı yerden sürdürülebilir." if partial_present else "Model dosyası eksik veya bozuk; yeniden indirilebilir." if present else "Hy-MT2 1.8B çeviri modeli henüz indirilmedi."),
         "model_path": str(MODEL_PATH),
         "download_size": "yaklaşık 1,13 GB",
     }
