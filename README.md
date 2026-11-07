@@ -8,7 +8,9 @@ Sarman TRANSLATE, Windows için oyun yerelleştirme çalışma alanıdır. Kurul
 
 - Koyu Sarman arayüzü; ölçülü bakır/turuncu vurgu.
 - Steam kurulum manifestleri, Epic Launcher `*.item` kayıtları, Windows GameConfigStore ve XboxGames klasörleri üzerinden yerel oyun keşfi.
-- Kullanıcının eklediği oyun kütüphanesi klasörlerini tarama.
+- Açılışta otomatik oyun kütüphanesi taraması; kullanıcıdan oyun klasörü seçmesini istemez.
+- Oyun dosyalarının adlarından ve `Localization` / `Languages` benzeri klasörlerden dil dosyası ipuçları (TR, EN, DE, FR vb.) algılama.
+- Her oyun satırında algılanan diller ve etkin Sarman yama dillerini ayrı gösterme.
 - Oyun adına, platforma ve yola göre arama.
 - JSON, CSV, TXT ve INI metin dosyalarını salt okunur tarama.
 - Çeviri Atölyesi: kaynak/çeviri tabloları, elle düzenleme, Gemini kuyruğu ve yerel çalışma kaydı.
@@ -22,9 +24,9 @@ Sarman TRANSLATE, Windows için oyun yerelleştirme çalışma alanıdır. Kurul
 
 ## Oyun keşfi ve lisanslar
 
-Oyun keşfi **kurulu oyunları** bulur; hesapların tüm satın alma geçmişini veya kurulmamış oyun sahipliğini kanıtlamaz. Steam `appmanifest` ve Epic yerel kurulum manifestleri yalnızca kurulu oyunların yerel izleridir. Microsoft Store/Xbox tespiti Windows oyun kayıtlarına ve XboxGames klasörüne dayanır; her Store oyununun erişilebilir oyun dosyası veya yazılabilir kurulum klasörü olacağı garanti edilmez.
+Oyun keşfi **kurulu oyunları** otomatik bulur; hesapların tüm satın alma geçmişini veya kurulmamış oyun sahipliğini kanıtlamaz. Steam `appmanifest` ve Epic yerel kurulum manifestleri yalnızca kurulu oyunların yerel izleridir. Microsoft Store/Xbox tespiti Windows oyun kayıtlarına ve XboxGames klasörüne dayanır; her Store oyununun erişilebilir oyun dosyası veya yazılabilir kurulum klasörü olacağı garanti edilmez.
 
-Uygulama platform parolası istemez, istemci veritabanlarını kırmaz, lisans/DRM/anti-cheat doğrulamasını aşmaz. Kullanıcının eklediği klasörler aday oyunlar olarak gösterilebilir; otomatik algılama her klasörün gerçekten oyun olduğunu kanıtlamaz.
+Uygulama platform parolası istemez, istemci veritabanlarını kırmaz, lisans/DRM/anti-cheat doğrulamasını aşmaz. Steam, Epic, Microsoft Store/Xbox ve yaygın yerel oyun klasörleri taranır. Desteklenmeyen mağazalar veya özel konumlar otomatik algılanmayabilir; uygulama bu durumda kullanıcıdan oyun dosyalarını seçmesini zorunlu kılmaz.
 
 ## Çeviri Atölyesi
 
@@ -42,7 +44,7 @@ Gemini kotası Google Cloud projesine ve modele göre değişir. Aynı projede y
 
 ## Desteklenen dosya biçimleri ve sınırlar
 
-Şu an çıkarma ve dışa aktarma için doğrulanmış biçimler: **JSON, CSV, TXT, INI**. Diğer dosyalar (XML, RESX, INI, PO, Unity/Unreal paketleri, özel arşivler, ikili varlıklar) bu sürümde otomatik değiştirilmez. Oyun motoruna özgü dil kayıt/etkinleştirme adımları ayrı adaptör gerektirir.
+Şu an çıkarma ve dışa aktarma için doğrulanmış biçimler: **JSON, CSV, TXT, INI**. Kütüphanedeki TR/EN/DE gibi etiketler oyun klasöründeki dil dosyası/klasörü ipuçlarıdır; oyunun bu dili ayarlardan etkinleştirebildiğini garanti etmez. `Sarman yaması` sütunu ise yalnızca Sarman TRANSLATE tarafından yüklenmiş ve kaydı bulunan yamaları gösterir. Diğer dosyalar (XML, RESX, INI, PO, Unity/Unreal paketleri, özel arşivler, ikili varlıklar) bu sürümde otomatik değiştirilmez. Oyun motoruna özgü dil kayıt/etkinleştirme adımları ayrı adaptör gerektirir.
 
 Yama paketi yalnızca UTF-8 JSON/CSV/TXT dosyalarını kabul eder. Paket dosyalarını oyuna kopyalamak, oyunun yeni dosya yolunu otomatik olarak yükleyeceğini garanti etmez. İlk denemeyi gerçek oyun yerine test kopyasında yap.
 
@@ -82,6 +84,12 @@ python -m compileall -q .
 python -m unittest discover -s tests -v
 python main.py
 ```
+
+## Windows güveni ve dijital imza
+
+Windows'ta yayıncı adının güvenilir görünmesi için EXE'nin geçerli bir Authenticode kod imzasıyla imzalanması gerekir. Build workflow'u isteğe bağlı imzalama adımını destekler. GitHub Actions secrets bölümüne `WINDOWS_CERTIFICATE_BASE64` (PFX sertifikasının Base64 içeriği) ve `WINDOWS_CERTIFICATE_PASSWORD` eklenirse EXE SHA-256 ile imzalanır ve imza doğrulanır. PFX dosyası build artifact'ına eklenmez.
+
+Kod imzalama sertifikası satın alınmalı ve yayıncı kimliğiyle eşleşmelidir; bu proje kendiliğinden sertifika üretemez. Sertifika eklenmezse çıktı **imzasız** kalır ve Windows SmartScreen "Bilinmeyen yayıncı" uyarısı gösterebilir. Geçerli imza bile SmartScreen itibarını veya her bilgisayarda uyarısız açılmayı garanti etmez; itibar zamanla ve indirme geçmişiyle oluşabilir. Sertifika/özel anahtar asla Git deposuna konmamalıdır.
 
 ## Windows EXE build
 
