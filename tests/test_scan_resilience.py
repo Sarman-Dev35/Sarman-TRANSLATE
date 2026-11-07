@@ -4,12 +4,28 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from PySide6.QtCore import QEventLoop, QTimer
+from PySide6.QtCore import QEventLoop, QObject, QTimer, Slot
 from PySide6.QtWidgets import QApplication
 
 from game_discovery import Game, _normal, discover_games
 from translation_core import scan_game_texts
 from translation_studio import TranslationStudio
+
+
+class _ScanReceiver(QObject):
+    def __init__(self, studio, loop):
+        super().__init__()
+        self.studio = studio
+        self.loop = loop
+        self.results = []
+
+    @Slot(list)
+    def completed(self, entries):
+        self.results.append(len(entries))
+        if len(self.results) == 1:
+            QTimer.singleShot(60, self.studio.scan)
+        else:
+            QTimer.singleShot(60, self.loop.quit)
 
 
 class ScanResilienceTests(unittest.TestCase):
@@ -46,20 +62,12 @@ class ScanResilienceTests(unittest.TestCase):
             (root / "strings.json").write_text('{"title":"New Game"}', encoding="utf-8")
             studio = TranslationStudio(Game("Rescan Test", "Test", str(root)))
             loop = QEventLoop()
-            results = []
-
-            def scan_completed(entries):
-                results.append(len(entries))
-                if len(results) == 1:
-                    QTimer.singleShot(60, studio.scan)
-                else:
-                    QTimer.singleShot(60, loop.quit)
-
-            studio.scan_worker.completed.connect(scan_completed)
+            receiver = _ScanReceiver(studio, loop)
+            studio.scan_worker.completed.connect(receiver.completed)
             studio.scan()
             QTimer.singleShot(10000, loop.quit)
             loop.exec()
-            self.assertEqual(results, [1, 1])
+            self.assertEqual(receiver.results, [1, 1])
             self.assertIsNone(studio.scan_worker)
             studio.close()
 
