@@ -225,6 +225,17 @@ class PatchManagerTests(unittest.TestCase):
             self.assertIn(b"start=Ba\xc5\x9fla\r\n", output)
             self.assertNotIn(b"\n", output.replace(b"\r\n", b""))
 
+    def test_json_root_string_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "root.json"
+            source.write_text('"Start Game"', encoding="utf-8")
+            entries = scan_game_texts(root)
+            self.assertEqual(len(entries), 1)
+            entries[0].translated = "Oyuna Başla"
+            output = build_translated_files(root, entries)["root.json"].decode("utf-8")
+            self.assertEqual(json.loads(output), "Oyuna Başla")
+
     def test_json_keys_with_dots_slashes_and_brackets_round_trip(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
