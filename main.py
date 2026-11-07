@@ -315,7 +315,6 @@ class MainWindow(QMainWindow):
         self.table.setCurrentCell(-1, -1)
         self.target_label.setText("Önce Oyun kütüphanesi bölümünden bir oyun seç.")
         self.games = games
-        self.game_count.value.setText(str(len(games)))
         self.render_games()
         self.library_status.setText(f"Tarama tamamlandı · {len(games)} oyun bulundu")
         self.scan_btn.setEnabled(True)
