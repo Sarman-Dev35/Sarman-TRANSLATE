@@ -157,6 +157,34 @@ class LocalEngineTests(unittest.TestCase):
                 self.assertTrue(local_engine.uninstall_english_turkish_model())
                 self.assertFalse(partial_path.exists())
 
+    def test_truncated_model_download_keeps_partial_file_for_resume(self):
+        import hashlib
+
+        payload = b"GGUF-short"
+        class FakeResponse:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self, _size):
+                if getattr(self, "sent", False):
+                    return b""
+                self.sent = True
+                return payload
+
+        with tempfile.TemporaryDirectory() as tmp:
+            model_path = Path(tmp) / local_engine.MODEL_NAME
+            partial = model_path.with_suffix(model_path.suffix + ".part")
+            with patch.object(local_engine, "MODEL_DIR", Path(tmp)), patch.object(
+                local_engine, "MODEL_PATH", model_path
+            ), patch.object(local_engine, "MODEL_FILE_SIZE", len(payload) + 4), patch.object(
+                local_engine, "MODEL_SHA256", hashlib.sha256(payload).hexdigest()
+            ), patch.object(local_engine.urllib.request, "urlopen", return_value=FakeResponse()):
+                with self.assertRaisesRegex(local_engine.LocalTranslationError, "sürdürülebilir"):
+                    local_engine.install_english_turkish_model()
+            self.assertTrue(partial.is_file())
+            self.assertEqual(partial.read_bytes(), payload)
+            self.assertFalse(model_path.exists())
+
     def test_model_download_reports_bytes_speed_and_eta(self):
         import hashlib
 
