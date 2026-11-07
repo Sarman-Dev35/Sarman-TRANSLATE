@@ -80,7 +80,7 @@ jobs:
           }
       - name: Explain unsigned build when no certificate is configured
         if: ${{ steps.signing_config.outputs.configured != 'true' }}
-        run: echo "::warning::No Authenticode certificate configured. The executable will be unsigned and Windows SmartScreen may show an unknown publisher warning."
+        run: echo "::warning::No Authenticode certificate configured. This is an UNSIGNED development build. SmartScreen or Smart App Control may block it; do not disable Windows protection to run it."
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
