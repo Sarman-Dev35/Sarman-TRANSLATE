@@ -74,6 +74,13 @@ def _language_for_path(path: Path) -> str | None:
                 code = _language_code(candidate)
                 if code:
                     return code
+    else:
+        for part in parts[:-1]:
+            token = part.casefold().replace("_", "-")
+            if len(token) > 3 or re.fullmatch(r"[a-z]{2,3}-[a-z]{2,4}", token):
+                code = _language_code(token)
+                if code:
+                    return code
     if parts:
         filename_stem = Path(parts[-1]).stem.casefold()
         for candidate in re.split(r"[^a-z0-9-]+", filename_stem):
