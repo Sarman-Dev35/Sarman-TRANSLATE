@@ -141,7 +141,8 @@ def _install_english_turkish_model_locked(progress=None) -> None:
                 output.flush()
                 os.fsync(output.fileno())
         if downloaded != MODEL_FILE_SIZE or partial.stat().st_size != MODEL_FILE_SIZE:
-            raise LocalTranslationError("Hy-MT2 indirmesi tamamlanmadı veya dosya boyutu doğrulanamadı.")
+            # A truncated transfer is resumable; preserve the partial file for the next attempt.
+            raise OSError("Hy-MT2 indirmesi henüz tamamlanmadı; kalan bölüm sonraki denemede sürdürülebilir.")
         digest = hashlib.sha256()
         with partial.open("rb") as source:
             for chunk in iter(lambda: source.read(8 * 1024 * 1024), b""):
