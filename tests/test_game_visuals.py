@@ -15,6 +15,13 @@ class GameVisualsTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_legacy_palette_api_remains_available_for_translation_studio(self):
+        from game_visuals import palette_for_game
+
+        self.assertEqual(palette_for_game("ADOFAI"), ("#e34b55", "#397fc7"))
+        self.assertEqual(palette_for_game("Geometry Dash"), ("#318bd4", "#e7c447"))
+        self.assertEqual(palette_for_game("Unknown Game"), WARM_PALETTE)
+
     def test_placeholder_cover_is_high_resolution(self):
         image = make_placeholder_cover("Test Game", "Steam", *WARM_PALETTE)
         self.assertFalse(image.isNull())

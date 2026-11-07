@@ -18,6 +18,20 @@ MIN_ART_HEIGHT = 150
 MAX_ART_PIXELS = 50_000_000
 
 
+def palette_for_game(game_name):
+    """Backward-compatible palette resolver used by the translation studio.
+
+    The library now uses a static Sarman theme; these legacy game palettes are
+    retained for dialogs that still request a per-game accent pair.
+    """
+    name = str(game_name or "").casefold()
+    if "adofai" in name or "a dance of fire" in name:
+        return ("#e34b55", "#397fc7")
+    if "geometry dash" in name:
+        return ("#318bd4", "#e7c447")
+    return WARM_PALETTE
+
+
 def theme_stylesheet(accent="#f06a3d", secondary="#a92f45", compact=False):
     radius = "10px" if compact else "12px"
     soft_accent = f"#{0x22:02x}{accent.lstrip('#')}"
