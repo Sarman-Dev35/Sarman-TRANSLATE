@@ -289,7 +289,7 @@ def _detect_language_files(game_root: Path) -> tuple[str, ...]:
                     return tuple(sorted(found))
                 if Path(filename).suffix.casefold() not in {".json", ".csv", ".txt", ".ini"}:
                     continue
-                match = _LANGUAGE_FILE.search(Path(filename).stem)
+                match = _LANGUAGE_FILE.search(Path(filename).stem.replace('_', '-'))
                 if match:
                     code = _LANGUAGE_CODES.get(match.group(1).casefold().replace("_", "-"))
                     if code:
