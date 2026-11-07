@@ -46,7 +46,7 @@ jobs:
           else {
             "configured=false" >> $env:GITHUB_OUTPUT
           }
-      - name: Sign Windows executable with Authenticode
+      - name: Sign packaged Windows binaries with Authenticode
         if: ${{ steps.signing_config.outputs.configured == 'true' }}
         shell: pwsh
         env:
@@ -56,15 +56,24 @@ jobs:
           $certificatePath = Join-Path $env:RUNNER_TEMP "sarman-signing.pfx"
           try {
             [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:SIGN_CERT_B64))
-            $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            $signtool = Get-ChildItem -Path "C:\\Program Files (x86)\\Windows Kits\\10\\bin" -Recurse -Filter signtool.exe |
               Where-Object { $_.Directory.Name -eq "x64" } |
+              Sort-Object FullName -Descending |
               Select-Object -First 1
             if (-not $signtool) { throw "Windows SDK signtool.exe was not found." }
-            $exe = Join-Path $PWD "dist\Sarman TRANSLATE\Sarman TRANSLATE.exe"
-            & $signtool.FullName sign /fd SHA256 /td SHA256 /tr "http://timestamp.digicert.com" /f $certificatePath /p $env:SIGN_CERT_PASSWORD $exe
-            if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed." }
-            & $signtool.FullName verify /pa /v $exe
-            if ($LASTEXITCODE -ne 0) { throw "Authenticode signature verification failed." }
+
+            $dist = Join-Path $PWD "dist\\Sarman TRANSLATE"
+            $binaries = Get-ChildItem -Path $dist -Recurse -File |
+              Where-Object { $_.Extension -in @(".exe", ".dll", ".pyd") }
+            if (-not $binaries) { throw "No packaged PE binaries were found to sign." }
+
+            foreach ($binary in $binaries) {
+              & $signtool.FullName sign /fd SHA256 /td SHA256 /tr "http://timestamp.digicert.com" /f $certificatePath /p $env:SIGN_CERT_PASSWORD $binary.FullName
+              if ($LASTEXITCODE -ne 0) { throw "Authenticode signing failed: $($binary.FullName)" }
+              & $signtool.FullName verify /pa /v $binary.FullName
+              if ($LASTEXITCODE -ne 0) { throw "Authenticode signature verification failed: $($binary.FullName)" }
+            }
+            "Signed and verified $($binaries.Count) packaged binaries."
           }
           finally {
             Remove-Item $certificatePath -Force -ErrorAction SilentlyContinue
