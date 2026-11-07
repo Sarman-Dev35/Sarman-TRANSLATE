@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QHeaderView, QMessageBox, QFileDialog, QProgressBar
 )
 
-from translation_core import TextEntry, scan_game_texts, load_workspace, save_workspace, build_translated_files, create_translation_patch
+from translation_core import TextEntry, scan_game_texts, load_workspace, save_workspace, build_translated_files, create_translation_patch, validate_translation
 from gemini_translator import translate_text, GeminiTranslationError
 
 SERVICE = "Sarman.TRANSLATE.Gemini"
@@ -55,6 +55,7 @@ class TranslationStudio(QDialog):
         self.entries: list[TextEntry] = []
         self.workspace_path = Path.home() / "AppData" / "Local" / "Sarman" / "TRANSLATE" / "workspaces" / (self._safe_name(game.name) + ".json")
         self.worker = None
+        self._rendering = False
         self.setWindowTitle(f"Çeviri Atölyesi · {game.name}")
         self.resize(1050, 700)
         self._build()
@@ -90,6 +91,7 @@ class TranslationStudio(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.table.setWordWrap(True)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.itemChanged.connect(self._cell_edited)
         root.addWidget(self.table, 1)
         self.progress = QProgressBar()
         root.addWidget(self.progress)
@@ -127,6 +129,7 @@ class TranslationStudio(QDialog):
             QMessageBox.warning(self, "Metin tarama", str(exc))
 
     def render(self):
+        self._rendering = True
         self.table.setRowCount(len(self.entries))
         for row, entry in enumerate(self.entries):
             values = (entry.status, f"{entry.file}\n{entry.locator}", entry.source, entry.translated)
@@ -135,6 +138,16 @@ class TranslationStudio(QDialog):
                 if col in (0, 1, 2):
                     cell.setFlags(cell.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.table.setItem(row, col, cell)
+        self._rendering = False
+
+    def _cell_edited(self, cell):
+        if self._rendering or cell.column() != 3 or cell.row() >= len(self.entries):
+            return
+        entry = self.entries[cell.row()]
+        entry.translated = cell.text()
+        entry.status = "translated" if not validate_translation(entry.source, entry.translated) else "review"
+        self.table.item(cell.row(), 0).setText(entry.status)
+        self.save()
 
     def save(self):
         try:
