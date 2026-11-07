@@ -46,7 +46,8 @@ def theme_stylesheet(accent="#f06a3d",secondary="#a92f45",compact=False):
  selected_accent=f"#{0x44:02x}{accent.lstrip('#')}"
  hover_accent=f"#{0x55:02x}{accent.lstrip('#')}"
  return f"""
- QWidget{{background:#0b0d12;color:#f2f0ed;font-family:'Segoe UI';font-size:13px;}}
+ QWidget{{color:#f2f0ed;font-family:'Segoe UI';font-size:13px;}}
+ QMainWindow,QDialog{{background:#0b0d12;}}
  QFrame#sidebar{{background:#10131a;border-right:1px solid #252a34;}}
  QLabel#brand{{font-size:24px;font-weight:900;letter-spacing:2px;color:#fffaf5;}}
  QLabel#brandSub,QLabel#eyebrow{{color:{accent};font-size:10px;font-weight:850;letter-spacing:1.8px;}}
