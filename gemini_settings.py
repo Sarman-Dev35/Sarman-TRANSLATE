@@ -133,7 +133,7 @@ class GeminiSettingsDialog(QDialog):
         self.countdown.setObjectName("status")
         root.addWidget(self.countdown)
 
-        note = QLabel("Not: Google API anahtarları doğrudan uygulama içinden sessizce oluşturulamaz. Google'ın güvenli sayfası açılır; anahtarı sen oluşturup buraya yapıştırırsın. Ücretsiz katman model ve proje limitlerine tabidir.")
+        note = QLabel("Not: Google API anahtarları doğrudan uygulama içinden sessizce oluşturulamaz. Google'ın güvenli sayfası açılır; anahtarı sen oluşturup buraya yapıştırırsın. Ücretsiz katman model ve proje limitlerine tabidir. Listelenen her model ücretsiz değildir; aynı projede yeni API anahtarı kota artırmaz. Ücret istemiyorsan Google projesinde faturalandırmayı etkinleştirme.")
         note.setObjectName("muted")
         note.setWordWrap(True)
         root.addWidget(note)
