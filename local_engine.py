@@ -71,6 +71,7 @@ def model_status() -> dict:
     except OSError:
         present = False
         partial_present = False
+        header_valid = False
         installed = False
     state = "installed" if installed else "partial" if partial_present else "corrupt" if present else "missing"
     return {
