@@ -118,7 +118,7 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
                 for i, line in enumerate(text.splitlines()):
                     item = _entry(file, root, f"line[{i}]", line)
                     if item: found.append(item)
-        except (ValueError, csv.Error, configparser.Error, json.JSONDecodeError):
+        except (ValueError, csv.Error, json.JSONDecodeError):
             continue
         entries.extend(found)
     # Stable de-duplication by exact source+locator.
@@ -228,10 +228,13 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
             elif suffix == ".ini":
                 lines = raw.splitlines()
                 for item in items:
-                    match = re.fullmatch(r"line\\[(\\d+)\\]", item.locator)
-                    if not match:
+                    locator = item.locator
+                    if not locator.startswith("line[") or not locator.endswith("]"):
                         continue
-                    line_index = int(match.group(1))
+                    number = locator[5:-1]
+                    if not number.isdigit():
+                        continue
+                    line_index = int(number)
                     if line_index >= len(lines) or "=" not in lines[line_index]:
                         continue
                     key, raw_value = lines[line_index].split("=", 1)
@@ -241,7 +244,7 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                     quote = value[0] if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"') else ""
                     translated = f"{quote}{item.translated}{quote}" if quote else item.translated
                     lines[line_index] = f"{key}={leading}{translated}{trailing}"
-                encoded = "\\n".join(lines) + ("\\n" if raw.endswith(("\\n", "\\r")) else "")
+                encoded = chr(10).join(lines) + (chr(10) if raw.endswith((chr(10), chr(13))) else "")
             elif suffix == ".txt":
                 lines = raw.splitlines()
                 for item in items:
