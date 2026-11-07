@@ -5,8 +5,9 @@ import hashlib
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal, Qt, QTimer
+from game_visuals import palette_for_game, theme_stylesheet
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
+    QDialog, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QMessageBox, QFileDialog, QProgressBar, QLineEdit
 )
 
@@ -188,7 +189,8 @@ class TranslationStudio(QDialog):
         self.autosave_timer.setInterval(750)
         self.autosave_timer.timeout.connect(lambda: self.save(silent=True))
         self.setWindowTitle(f"Çeviri Atölyesi · {game.name}")
-        self.resize(1050, 700)
+        self.resize(1180, 780)
+        self.setMinimumSize(900, 620)
         self._build()
         self._load_existing()
         self.refresh_model_status()
@@ -198,10 +200,24 @@ class TranslationStudio(QDialog):
         return "".join(c if c.isalnum() or c in "-_" else "_" for c in value)[:80] or "game"
 
     def _build(self):
+        accent, secondary = getattr(self.game, "theme_palette", palette_for_game(self.game.name))
         root = QVBoxLayout(self)
-        title = QLabel(f"{self.game.name}  /  ÇEVİRİ ATÖLYESİ")
-        title.setStyleSheet("font-size:20px;font-weight:800;color:#e58a43")
-        root.addWidget(title)
+        root.setContentsMargins(22, 20, 22, 18)
+        root.setSpacing(13)
+        hero = QFrame()
+        hero.setObjectName("hero")
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(20, 16, 20, 16)
+        eyebrow = QLabel("SARMAN TRANSLATE  /  LOCALIZATION STUDIO")
+        eyebrow.setObjectName("eyebrow")
+        title = QLabel(self.game.name)
+        title.setObjectName("heroTitle")
+        subtitle = QLabel("Oyun metinlerini tara · yerel AI ile çevir · güvenli yama oluştur")
+        subtitle.setObjectName("muted")
+        hero_layout.addWidget(eyebrow)
+        hero_layout.addWidget(title)
+        hero_layout.addWidget(subtitle)
+        root.addWidget(hero)
         self.language_label = QLabel(
             f"KAYNAK DİL: {self.source_language}  →  HEDEF DİL: TÜRKÇE"
             + ("  ·  Otomatik model desteği mevcut." if self.source_language == "EN"
@@ -211,15 +227,18 @@ class TranslationStudio(QDialog):
         root.addWidget(self.language_label)
         root.addWidget(QLabel("Seçilen kaynak diline ait açık metin dosyaları taranır. Orijinal oyun dosyaları çeviri sırasında değiştirilmez."))
         actions = QHBoxLayout()
-        self.scan_btn = QPushButton("Metinleri tara")
+        actions.setSpacing(9)
+        self.scan_btn = QPushButton("↻  Metinleri tara")
         self.scan_btn.clicked.connect(self.scan)
-        self.translate_btn = QPushButton("Bekleyenleri çevir")
+        self.translate_btn = QPushButton("✦  AI ile çevir")
+        self.translate_btn.setObjectName("primary")
         self.translate_btn.clicked.connect(self.translate_pending)
-        self.export_btn = QPushButton("Yama ZIP'i oluştur")
+        self.export_btn = QPushButton("⇧  Yama ZIP'i oluştur")
+        self.export_btn.setObjectName("primary")
         self.export_btn.clicked.connect(self.export_patch)
         self.glossary_btn = QPushButton("Terim sözlüğü")
         self.glossary_btn.clicked.connect(self.manage_glossary)
-        self.model_btn = QPushButton("Modeli indir · 1,13 GB")
+        self.model_btn = QPushButton("↓  AI modelini indir · 1,13 GB")
         self.model_btn.clicked.connect(self.install_model)
         self.remove_model_btn = QPushButton("Modeli ve yarım indirmeyi sil")
         self.remove_model_btn.clicked.connect(self.remove_model)
@@ -227,10 +246,18 @@ class TranslationStudio(QDialog):
         for button in (self.scan_btn, self.translate_btn, self.model_btn, self.remove_model_btn, self.glossary_btn, self.export_btn):
             actions.addWidget(button)
         root.addLayout(actions)
+        model_panel = QFrame()
+        model_panel.setObjectName("panel")
+        model_layout = QVBoxLayout(model_panel)
+        model_layout.setContentsMargins(15, 12, 15, 12)
+        model_heading = QLabel("YEREL AI MOTORU  ·  HY-MT2")
+        model_heading.setObjectName("eyebrow")
+        model_layout.addWidget(model_heading)
         self.model_status_label = QLabel("")
         self.model_status_label.setWordWrap(True)
-        self.model_status_label.setStyleSheet("color:#b9a18d;padding:4px;")
-        root.addWidget(self.model_status_label)
+        self.model_status_label.setObjectName("muted")
+        model_layout.addWidget(self.model_status_label)
+        root.addWidget(model_panel)
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["DURUM", "DOSYA / KONUM", "KAYNAK METİN", "TÜRKÇE ÇEVİRİ"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -238,6 +265,8 @@ class TranslationStudio(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.table.setWordWrap(True)
+        self.table.setAlternatingRowColors(True)
+        self.table.verticalHeader().setDefaultSectionSize(54)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.itemChanged.connect(self._cell_edited)
         root.addWidget(self.table, 1)
@@ -245,14 +274,7 @@ class TranslationStudio(QDialog):
         root.addWidget(self.progress)
         self.status = QLabel("Hazır.")
         root.addWidget(self.status)
-        self.setStyleSheet("""
-            QDialog,QWidget{background:#0c0d10;color:#eeeae5;font-family:'Segoe UI';}
-            QTableWidget{background:#111216;border:1px solid #292a30;selection-background-color:#35271d;}
-            QHeaderView::section{background:#17181d;color:#e58a43;padding:8px;border:0;}
-            QTableWidget::item{padding:7px;}
-            QPushButton{background:#1a1b20;border:1px solid #34353c;border-radius:7px;padding:9px;}
-            QPushButton:hover{border-color:#e58a43;}
-        """)
+        self.setStyleSheet(theme_stylesheet(accent, secondary, compact=True))
 
     def _load_existing(self):
         if self.workspace_path.is_file():
@@ -391,11 +413,11 @@ class TranslationStudio(QDialog):
         )
         self.model_btn.setVisible(not info["installed"])
         if info.get("partial_present"):
-            self.model_btn.setText("İndirmeye devam et")
+            self.model_btn.setText("↓  İndirmeye devam et")
         elif info.get("present"):
-            self.model_btn.setText("Bozuk modeli yeniden indir")
+            self.model_btn.setText("↻  Bozuk modeli yeniden indir")
         else:
-            self.model_btn.setText("Modeli indir · 1,13 GB")
+            self.model_btn.setText("↓  AI modelini indir · 1,13 GB")
         busy = (
             self._operation_busy or self._scan_busy
             or bool(self.worker and self.worker.isRunning())

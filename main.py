@@ -6,8 +6,9 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import os
 
-from PySide6.QtCore import Qt, QThread, Signal, QTimer, QSettings
-from PySide6.QtGui import QFont, QIcon
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QSettings, QPropertyAnimation, QEasingCurve, QObject, Property, QSize
+from PySide6.QtGui import QFont, QIcon, QPixmap
+from game_visuals import GameArtService, palette_for_game, interpolate_palette, theme_stylesheet, make_placeholder_cover
 from PySide6.QtWidgets import (
     QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QMessageBox, QPushButton, QProgressBar, QTableWidget,
@@ -99,6 +100,20 @@ class StatCard(QFrame):
         layout.addWidget(self.value)
 
 
+class ColorTransition(QObject):
+    valueChanged = Signal(float)
+    def __init__(self):
+        super().__init__()
+        self._value = 1.0
+    @Property(float)
+    def value(self):
+        return self._value
+    @value.setter
+    def value(self, value):
+        self._value = float(value)
+        self.valueChanged.emit(self._value)
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -116,7 +131,18 @@ class MainWindow(QMainWindow):
         self.language_settings = QSettings("Sarman Studios", "Sarman TRANSLATE")
         self.patch_path: str | None = None
         self.patch_manifest: dict | None = None
+        self._theme_from = ("#f06a3d", "#a92f45")
+        self._theme_to = self._theme_from
+        self._theme_value = 1.0
+        self._active_game_path = None
+        self._theme_transition = ColorTransition()
+        self._theme_transition.valueChanged.connect(self._apply_theme_frame)
+        self._theme_animation = QPropertyAnimation(self._theme_transition, b"value", self)
+        self._theme_animation.setDuration(520)
+        self._theme_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
         self.build_ui()
+        self.art_service = GameArtService(self)
+        self.art_service.cover_ready.connect(self._game_art_ready)
         self.apply_style()
         # Start discovery after the event loop begins so the window remains responsive.
         QTimer.singleShot(150, self.start_scan)
@@ -130,7 +156,7 @@ class MainWindow(QMainWindow):
 
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(218)
+        sidebar.setFixedWidth(238)
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(20, 25, 20, 20)
         side.setSpacing(12)
@@ -161,12 +187,16 @@ class MainWindow(QMainWindow):
         side.addWidget(nav_title)
         self.nav_library = QPushButton("▦   Oyun kütüphanesi")
         self.nav_patch = QPushButton("⇧   Yama merkezi")
+        self.nav_studio = QPushButton("✦   AI çeviri atölyesi")
         self.nav_library.setObjectName("navActive")
         self.nav_patch.setObjectName("navButton")
         self.nav_library.clicked.connect(lambda: self.pages.setCurrentIndex(0))
         self.nav_patch.clicked.connect(lambda: self.pages.setCurrentIndex(1))
+        self.nav_studio.clicked.connect(self.open_translation_studio)
+        self.nav_studio.setObjectName("navButton")
         side.addWidget(self.nav_library)
         side.addWidget(self.nav_patch)
+        side.addWidget(self.nav_studio)
         side.addStretch()
         version = QLabel("DESKTOP  ·  ÖN SÜRÜM\nYerelleştirme araçları")
         version.setObjectName("sideFoot")
@@ -225,6 +255,29 @@ class MainWindow(QMainWindow):
         self.recover_incomplete_btn.setEnabled(False)
         self.recover_incomplete_btn.clicked.connect(self.recover_incomplete_install)
         lib.addLayout(row)
+        hero = QFrame()
+        hero.setObjectName("hero")
+        hero_layout = QHBoxLayout(hero)
+        hero_layout.setContentsMargins(18, 15, 18, 15)
+        hero_layout.setSpacing(18)
+        self.hero_cover = QLabel()
+        self.hero_cover.setFixedSize(220, 124)
+        self.hero_cover.setScaledContents(True)
+        hero_layout.addWidget(self.hero_cover)
+        hero_text = QVBoxLayout()
+        self.hero_kicker = QLabel("SARMAN GAME PROFILE  ·  SMART THEME")
+        self.hero_kicker.setObjectName("eyebrow")
+        self.hero_title = QLabel("Bir oyun seç")
+        self.hero_title.setObjectName("heroTitle")
+        self.hero_meta = QLabel("Oyun kapakları ve renkleri seçimine göre hazırlanır.")
+        self.hero_meta.setObjectName("muted")
+        self.hero_meta.setWordWrap(True)
+        hero_text.addWidget(self.hero_kicker)
+        hero_text.addWidget(self.hero_title)
+        hero_text.addWidget(self.hero_meta)
+        hero_text.addStretch()
+        hero_layout.addLayout(hero_text, 1)
+        lib.addWidget(hero)
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["OYUN", "PLATFORM", "DİL / YAMA DURUMU"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
@@ -234,6 +287,10 @@ class MainWindow(QMainWindow):
         self.table.setShowGrid(False)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setSelectionMode(QTableWidget.SingleSelection)
+        self.table.setIconSize(QSize(176, 96))
+        self.table.setColumnWidth(0, 310)
+        self.table.setAlternatingRowColors(True)
+        self.table.verticalHeader().setDefaultSectionSize(124)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.itemSelectionChanged.connect(self.selection_changed)
         lib.addWidget(self.table, 1)
@@ -317,39 +374,8 @@ class MainWindow(QMainWindow):
         self.pages.addTab(patch_page, "Yama merkezi")
         shell.addWidget(content, 1)
 
-    def apply_style(self):
-        self.setStyleSheet("""
-            QWidget { background:#0c0d10; color:#eeeae5; font-family:'Segoe UI'; font-size:13px; }
-            QFrame#sidebar { background:#101115; border-right:1px solid #24252a; }
-            QLabel#brand { font-size:24px; font-weight:900; letter-spacing:2px; color:#f4f0eb; }
-            QLabel#brandSub { color:#e58a43; font-size:11px; font-weight:800; letter-spacing:3px; }
-            QLabel#sideFoot { color:#777a82; font-size:10px; line-height:1.5; }
-            QLabel#eyebrow { color:#e58a43; font-size:10px; font-weight:800; letter-spacing:1.7px; }
-            QLabel#pageTitle { font-size:23px; font-weight:750; }
-            QLabel#muted { color:#92949c; }
-            QLabel#heroTitle { font-size:27px; font-weight:750; padding:3px 0; }
-            QLabel#sectionTitle { font-size:17px; font-weight:700; }
-            QFrame#hero { background:#17181d; border:1px solid #303137; border-radius:13px; }
-            QFrame#statCard, QFrame#panel { background:#141519; border:1px solid #292a30; border-radius:11px; }
-            QLabel#statValue { font-size:17px; font-weight:700; padding-top:4px; }
-            QPushButton { background:#1a1b20; border:1px solid #34353c; border-radius:8px; padding:10px 14px; font-weight:650; }
-            QPushButton:hover { border-color:#e58a43; background:#24201c; }
-            QPushButton:disabled { color:#666870; background:#17181c; border-color:#292a30; }
-            QPushButton#primary { background:#e58a43; color:#1a120c; border:0; padding:11px 17px; font-weight:800; }
-            QPushButton#primary:hover { background:#f09a55; }
-            QPushButton#navButton, QPushButton#navActive { text-align:left; padding:12px 11px; border:0; }
-            QPushButton#navButton { background:transparent; color:#a2a3aa; }
-            QPushButton#navActive { background:#292019; color:#f0a36a; border-left:3px solid #e58a43; }
-            QLineEdit { background:#141519; border:1px solid #303138; border-radius:8px; padding:10px 12px; color:#fff; }
-            QLineEdit:focus { border-color:#e58a43; }
-            QTableWidget { background:#111216; border:1px solid #292a30; border-radius:10px; padding:5px; selection-background-color:#35271d; }
-            QHeaderView::section { background:#17181d; color:#92949c; border:0; padding:12px 9px; font-size:10px; font-weight:800; }
-            QTableWidget::item { padding:9px 8px; border-bottom:1px solid #24252a; }
-            QLabel#warning { color:#dca879; background:#211b16; border:1px solid #493323; border-radius:8px; padding:12px; }
-            QComboBox { background:#141519; border:1px solid #34353c; border-radius:8px; padding:8px 10px; min-width:150px; }
-            QComboBox::drop-down { border:0; width:25px; }
-            QComboBox QAbstractItemView { background:#17181d; selection-background-color:#35271d; }
-        """)
+    def apply_style(self, accent="#f06a3d", secondary="#a92f45"):
+        self.setStyleSheet(theme_stylesheet(accent, secondary))
 
     def closeEvent(self, event):
         if self.worker and self.worker.isRunning():
@@ -433,7 +459,12 @@ class MainWindow(QMainWindow):
         selected = self.selected_game()
         selected_path = selected.path if selected else None
         query = self.search.text().casefold()
-        items = [g for g in self.games if query in g.name.casefold() or query in g.platform.casefold() or query in g.path.casefold()]
+        items = [
+            game for game in self.games
+            if query in game.name.casefold()
+            or query in game.platform.casefold()
+            or query in game.path.casefold()
+        ]
         self.table.blockSignals(True)
         self.table.setRowCount(len(items))
         for row, game in enumerate(items):
@@ -444,14 +475,25 @@ class MainWindow(QMainWindow):
             if incomplete:
                 patch_status += "  ·  Yarım kalan yükleme"
             status = f"{detected}  ·  {patch_status}"
-            values = (game.name, game.platform, status)
-            for col, value in enumerate(values):
-                cell = QTableWidgetItem(value)
-                cell.setToolTip(value)
-                if col == 0:
-                    cell.setFont(QFont("Segoe UI", 10, QFont.DemiBold))
-                self.table.setItem(row, col, cell)
-            self.table.item(row, 0).setData(Qt.UserRole, game.path)
+
+            name_cell = QTableWidgetItem(game.name)
+            name_cell.setToolTip(f"{game.name}\n{game.platform}\n{game.path}")
+            name_cell.setFont(QFont("Segoe UI", 11, QFont.Bold))
+            cover = make_placeholder_cover(game.name, game.platform, *palette_for_game(game.name))
+            name_cell.setIcon(QIcon(QPixmap.fromImage(cover)))
+            name_cell.setData(Qt.UserRole, game.path)
+            self.table.setItem(row, 0, name_cell)
+
+            platform_cell = QTableWidgetItem(game.platform)
+            platform_cell.setToolTip(game.platform)
+            self.table.setItem(row, 1, platform_cell)
+            status_cell = QTableWidgetItem(status)
+            status_cell.setToolTip(status)
+            self.table.setItem(row, 2, status_cell)
+            self.table.setRowHeight(row, 124)
+            if hasattr(self, "art_service"):
+                self.art_service.request(game)
+
         if selected_path:
             for row, game in enumerate(items):
                 if game.path == selected_path:
@@ -459,6 +501,39 @@ class MainWindow(QMainWindow):
                     break
         self.table.blockSignals(False)
         self.selection_changed()
+
+    def _game_art_ready(self, path, image, accent, secondary):
+        pixmap = QPixmap.fromImage(image).scaled(176, 96, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item and item.data(Qt.UserRole) == path:
+                item.setIcon(QIcon(pixmap))
+                break
+        game = next((item for item in self.games if item.path == path), None)
+        if game:
+            palette = palette_for_game(game.name)
+            if palette == ("#f06a3d", "#a92f45"):
+                palette = (accent, secondary)
+            game.theme_palette = palette
+            selected = self.selected_game()
+            if selected and selected.path == path:
+                self.hero_cover.setPixmap(QPixmap.fromImage(image).scaled(220, 124, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation))
+                self._animate_theme(palette)
+
+    def _animate_theme(self, palette):
+        if palette == self._theme_to:
+            return
+        self._theme_animation.stop()
+        self._theme_from = interpolate_palette(self._theme_from, self._theme_to, self._theme_value)
+        self._theme_to = palette
+        self._theme_animation.setStartValue(0.0)
+        self._theme_animation.setEndValue(1.0)
+        self._theme_animation.start()
+
+    def _apply_theme_frame(self, value):
+        self._theme_value = value
+        accent, secondary = interpolate_palette(self._theme_from, self._theme_to, value)
+        self.apply_style(accent, secondary)
 
     def _language_setting_key(self, game):
         import hashlib
@@ -493,6 +568,16 @@ class MainWindow(QMainWindow):
     def selection_changed(self):
         game = self.selected_game()
         if game:
+            if game.path != self._active_game_path:
+                self._active_game_path = game.path
+                self.hero_title.setText(game.name)
+                self.hero_meta.setText(f"{game.platform}  ·  {game.path}")
+                self.hero_cover.setPixmap(QPixmap.fromImage(make_placeholder_cover(
+                    game.name, game.platform, *palette_for_game(game.name)
+                )))
+                self._animate_theme(getattr(game, "theme_palette", palette_for_game(game.name)))
+                if hasattr(self, "art_service"):
+                    self.art_service.request(game)
             self.studio_btn.setEnabled(True)
             self.target_label.setText(f"{game.name}  ·  {game.path}")
             self.install_btn.setEnabled(bool(self.patch_path))
