@@ -302,10 +302,10 @@ class PatchManagerTests(unittest.TestCase):
             source.write_bytes(b"\xef\xbb\xbfkey;en;fr\r\nstart;\"Start, now\";\"Demarrer\"\r\n")
             entries = scan_game_texts(root)
             self.assertEqual(len(entries), 1)
-            entries[0].translated = "Şimdi Başla, lütfen"
+            entries[0].translated = "Şimdi Başla; lütfen"
             output = build_translated_files(root, entries)["locale.csv"]
             self.assertTrue(output.startswith(b"\xef\xbb\xbf"))
-            self.assertIn("start;\"Şimdi Başla, lütfen\";\"Demarrer\"\r\n".encode("utf-8"), output)
+            self.assertIn("start;\"Şimdi Başla; lütfen\";\"Demarrer\"\r\n".encode("utf-8"), output)
             self.assertNotIn('start,"Şimdi'.encode("utf-8"), output)
 
     def test_json_bom_indent_and_final_newline_are_preserved(self):
