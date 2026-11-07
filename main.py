@@ -335,6 +335,7 @@ class MainWindow(QMainWindow):
 
     def start_scan(self):
         self.scan_btn.setEnabled(False)
+        self.add_folder_btn.setEnabled(False)
         self.scan_btn.setText("Taranıyor…")
         self.library_status.setText("Oyun kütüphaneleri taranıyor…")
         self.worker = ScanWorker(self.custom_roots)
@@ -348,6 +349,7 @@ class MainWindow(QMainWindow):
         self.render_games()
         self.library_status.setText(f"Tarama tamamlandı · {len(games)} oyun bulundu")
         self.scan_btn.setEnabled(True)
+        self.add_folder_btn.setEnabled(True)
         self.scan_btn.setText("⟳   Yeniden tara")
 
     def scan_failed(self, message):
