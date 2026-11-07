@@ -326,7 +326,7 @@ def translate_text(text: str, context: str = "", game_name: str = "") -> str:
             model = _get_model()
             response = model(
                 prompt,
-                max_tokens=min(2048, max(128, len(protected) * 3)),
+                max_tokens=min(4096, max(128, len(protected) * 3)),
                 temperature=0.7,
                 top_p=0.6,
                 top_k=20,
