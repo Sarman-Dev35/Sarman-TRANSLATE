@@ -1,40 +1,36 @@
-# Sarman TRANSLATE — oyun keşfi ve yerelleştirme mimarisi
+# Sarman TRANSLATE — mevcut MVP mimarisi
 
-## 1. Oyun keşfi: kurulum ile lisansı ayır
+## 1. Oyun keşfi
 
-Uygulama oyunları platform izlerinden keşfeder; hiçbir platform hesabının parolasını istemez ve oyun dosyalarını tarama sırasında değiştirmez.
+- **Steam:** Steam kayıt konumları, `libraryfolders.vdf` ve `appmanifest_*.acf`.
+- **Epic Games:** Epic Launcher'ın yerel `*.item` manifestleri.
+- **Microsoft Store / Xbox:** Windows GameConfigStore oyun kayıtları ve `XboxGames` klasörü.
+- **Özel kütüphaneler:** Kullanıcının eklediği klasörler ve bilinen Games/Oyunlar dizinleri.
 
-- **Steam:** Steam kurulum kayıtları, `libraryfolders.vdf` ve `appmanifest_*.acf` dosyaları okunur. Bu, o Steam kütüphanesinde kurulu oyunları bulur; hesabın tüm satın alma/lisans geçmişini kanıtlamaz.
-- **Epic Games:** Epic Launcher'ın yerel `*.item` kurulum manifestleri okunur. Bu da kurulu oyunları gösterir; Epic hesabındaki kurulmamış tüm sahip olunan oyunları göstermez.
-- **Microsoft Store / Xbox:** Windows Game DVR / GameConfigStore oyun kayıtları ve `C:\\XboxGames` kurulumları incelenir. WindowsApps içindeki oyunlar için kayıtlı çalıştırılabilir dosya ve paket manifesti kullanılabilir. Microsoft Store lisans kataloğuna dair genel, herkese açık bir yerel API bulunmadığından lisans sahipliği iddiası gösterilmez.
-- **Diğer klasörler:** Kullanıcının Games/Oyunlar klasörleri ve seçtiği özel klasörler ek kaynak olabilir. Sıradan uygulamalar oyun diye gösterilmemeli; güven düzeyi düşük adaylar ayrı işaretlenmelidir.
+Bunlar yerel kurulum izleridir, tam lisans envanteri değildir. Kurulu olmayan sahip olunan oyunları platform hesaplarından listelemek bu MVP'nin kapsamında değildir. Parola toplama, lisans atlatma veya özel istemci veritabanı okuma yapılmaz.
 
-Platformların tam sahip olunan oyun kütüphanelerini listelemek ileride resmi OAuth/izinli API entegrasyonlarıyla ayrıca ele alınabilir. Parola kazıma, istemci veritabanı kırma veya lisans atlatma yapılmaz.
+## 2. Metin çıkarma
 
-## 2. Çeviri iş akışı
+`translation_core.py` salt okunur tarama yapar. Şu an JSON string değerleri, CSV hücreleri ve TXT satırları çıkarılır. Boyut ve dosya sayısı sınırları vardır; ikili dosyalar okunmaz. CSV başlıkları için yaygın metin sütunu adları tanınır, başlık bulunamazsa sınırlı sütun aralığı aday kabul edilir.
 
-1. **Oyun seçimi:** Bulunan oyun, platform, kurulum yolu ve algılama kaynağı gösterilir.
-2. **Metin arayıcı:** Yalnızca bilinen metin/kaynak dosyalarını tarar; ikili dosyaları, büyük arşivleri ve oyun kayıtlarını değiştirmez. Dosya türü/engine adaptörleri kullanır.
-3. **Metin çıkarıcı:** JSON, XML, CSV, INI, PO, RESX ve düz metin gibi formatlar için ayrı okuyucu/yazıcılar. Unity/Unreal ve özel arşiv biçimleri ayrı adaptör olarak eklenir; desteklenmeyen dosyalar açıkça raporlanır.
-4. **Çeviri çalışma alanı:** Kaynak metin, hedef dil, bağlam/dosya, karakter sınırı, durum (bekliyor/çevrildi/kontrol gerekli) ve arama/filtre. Yinelenen metinler birleştirilir.
-5. **Çeviri motoru:** Kullanıcının Gemini anahtarıyla küçük partiler halinde çeviri. Yer tutucular, biçim kodları, HTML/JSON etiketleri, satır sonları ve değişkenler kilitlenir; yanıt doğrulanmadan kabul edilmez. İlerleme yerel kaydedilir, kota aşımında kuyruk duraklatılır.
-6. **Kontrol:** Kaynak-hedef boşluğu, bozulmuş placeholder, eksik satır, beklenmeyen uzunluk ve biçim hataları raporlanır. Kullanıcı satırları düzenleyip onaylar.
-7. **Yama oluşturucu:** Onaylı çevirilerden yalnızca çeviri verisini içeren, manifestli ZIP paketi üretir. Oyun motoruna özgü çıktı adaptörü hedef yolu belirler.
-8. **Kurulum ve geri alma:** Önce uyumluluk kontrolü ve yedek; sonra açık kullanıcı onayıyla yükleme. Geri alma kaydı her dosyayı takip eder.
+Her kayıt dosya yolu, alan/satır konumu, kaynak metin, çeviri ve durum taşır. Çalışma dosyası kullanıcı profili altında JSON olarak saklanır. JSON/CSV/TXT/INI dışa aktarımı yeni dosya içeriği üretir; oyun kaynak dosyalarına doğrudan yazmaz.
 
-## 3. Tasarım ilkeleri
+## 3. Çeviri motoru
 
-- Koyu, sade Sarman arayüzü; ölçülü bakır/turuncu vurgu.
-- Ana alanlar: **Oyunlar**, **Metinleri Tara**, **Çeviri Atölyesi**, **Yama Oluştur**, **Yama Merkezi**, **Ayarlar**.
-- Ağır tarama ve API çağrıları arka plan iş parçacıklarında; arayüz donmaz.
-- Kaynak dosyalar varsayılan olarak salt okunur; orijinal dosyaya yazma yalnızca yama kurulurken ve onayla.
-- Her oyun/engine adaptörü ayrı modül; evrensel uyumluluk iddiası yok.
-- DRM, lisans doğrulaması atlatma, anti-cheat müdahalesi, korsan oyun/asset dağıtımı ve oynanış değişikliği kapsam dışıdır.
+`gemini_translator.py` kullanıcının kendi Gemini API anahtarıyla `generateContent` çağrısı yapar. Model adı doğrulanır; geçici sunucu/bağlantı hatalarında sınırlı yeniden deneme yapılır. 429 / RESOURCE_EXHAUSTED durumunda kuyruk duraklatılır. Tamamlanan satırlar anında kaydedilir.
 
-## 4. Aşamalı geliştirme
+Yer tutucular, format kodları, markup etiketleri ve satır sonları için kalite kontrolü vardır. Otomatik kontrol her dilbilimsel hatayı yakalayamaz; kullanıcı son kontrolü yapmalıdır. Kota limiti Google Cloud projesine bağlıdır; farklı bir API key aynı projede yeni kota sağlamaz.
 
-- Aşama A: platformlardan kurulu oyun keşfi ve güvenilir liste.
-- Aşama B: metin dosyası arama/çıkarma ve tarama raporu.
-- Aşama C: Gemini çeviri kuyruğu, checkpoint ve kalite kontrolleri.
-- Aşama D: oyun/engine adaptörleri ve yama oluşturucu.
-- Aşama E: güvenli kurulum, yedekleme, geri alma ve test matrisi.
+## 4. Yama üretimi ve kurulum
+
+Çevirilmiş desteklenen dosyalar manifestli ZIP'e alınır. Yükleyici yalnızca UTF-8 JSON/CSV/TXT/INI kabul eder; yol geçişi, symlink, duplicate hedef, şifreli girdiler, dosya adedi/boyutu ve dosya uzantısı kontrolleri uygular. Her dosyanın önceki hali yedeklenir; kurulum hatasında mümkün olduğunca geri sarılır. Geri alma kaydı yerel kullanıcı verisindedir.
+
+Paket dosyalarını oyun klasörüne kopyalamak oyunun bu dosyaları otomatik yükleyeceğini garanti etmez. Oyun motoruna özgü hedef yolu, dil menüsü kaydı veya arşiv entegrasyonu ayrıca geliştirilmelidir.
+
+## 5. Bilinçli sınırlamalar
+
+- XML, RESX, INI, PO, Unity/Unreal asset bundle ve özel arşiv desteği yok.
+- Oyunların lisans sahipliği doğrulanmıyor.
+- Çevrimiçi/anti-cheat korumalı oyunlara yama uygulama önerilmez.
+- Kullanıcı klasöründeki her EXE'nin oyun olduğu kanıtlanamaz; özel klasör taraması aday gösterir.
+- Her oyun için ayrı uyumluluk testi gerekir.

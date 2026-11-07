@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
 import keyring
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QTimer, Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
     QPushButton, QVBoxLayout, QWidget
@@ -19,12 +19,43 @@ AI_STUDIO_URL = "https://aistudio.google.com/apikey"
 MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
 
+class ModelFetchWorker(QThread):
+    completed = Signal(list)
+    failed = Signal(str)
+
+    def __init__(self, api_key: str, parent=None):
+        super().__init__(parent)
+        self.api_key = api_key
+
+    def run(self):
+        try:
+            request = urllib.request.Request(
+                MODELS_URL,
+                headers={"x-goog-api-key": self.api_key, "Accept": "application/json"},
+                method="GET",
+            )
+            with urllib.request.urlopen(request, timeout=15) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            models = [
+                model for model in data.get("models", [])
+                if "generateContent" in model.get("supportedGenerationMethods", [])
+            ]
+            models.sort(key=lambda model: model.get("name", ""))
+            self.completed.emit(models)
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:500]
+            self.failed.emit(f"Google API yanıtı: HTTP {exc.code}. {detail}")
+        except Exception as exc:
+            self.failed.emit(f"Bağlantı kurulamadı: {type(exc).__name__}: {exc}")
+
+
 class GeminiSettingsDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Gemini API · Sarman TRANSLATE")
         self.setMinimumWidth(570)
         self.deadline = None
+        self.model_worker = None
         self.timer = QTimer(self)
         self.timer.setInterval(250)
         self.timer.timeout.connect(self.update_countdown)
@@ -68,17 +99,21 @@ class GeminiSettingsDialog(QDialog):
         save_btn = QPushButton("Anahtarı kaydet")
         save_btn.setObjectName("primary")
         save_btn.clicked.connect(self.save_key)
-        test_btn = QPushButton("Bağlantıyı test et")
-        test_btn.clicked.connect(self.test_key)
+        self.test_btn = QPushButton("Bağlantıyı test et")
+        self.test_btn.clicked.connect(self.test_key)
+        delete_btn = QPushButton("Anahtarı sil")
+        delete_btn.clicked.connect(self.delete_key)
         actions.addWidget(open_btn)
+        actions.addWidget(delete_btn)
         actions.addStretch()
         actions.addWidget(save_btn)
-        actions.addWidget(test_btn)
+        actions.addWidget(self.test_btn)
         root.addLayout(actions)
 
         root.addWidget(QLabel("Kullanılabilir Gemini modeli"))
         self.model_combo = QComboBox()
         self.model_combo.addItem("Bağlantı testi sonrası modeller yüklenecek")
+        self.model_combo.currentIndexChanged.connect(self.save_model_choice)
         root.addWidget(self.model_combo)
         self.api_status = QLabel("API anahtarı eklenmedi.")
         self.api_status.setObjectName("status")
@@ -98,7 +133,7 @@ class GeminiSettingsDialog(QDialog):
         self.countdown.setObjectName("status")
         root.addWidget(self.countdown)
 
-        note = QLabel("Not: Google API anahtarları doğrudan uygulama içinden sessizce oluşturulamaz. Google'ın güvenli sayfası açılır; anahtarı sen oluşturup buraya yapıştırırsın. Ücretsiz katman model ve proje limitlerine tabidir.")
+        note = QLabel("Not: Google API anahtarları doğrudan uygulama içinden sessizce oluşturulamaz. Google'ın güvenli sayfası açılır; anahtarı sen oluşturup buraya yapıştırırsın. Ücretsiz katman model ve proje limitlerine tabidir. Listelenen her model ücretsiz değildir; aynı projede yeni API anahtarı kota artırmaz. Ücret istemiyorsan Google projesinde faturalandırmayı etkinleştirme.")
         note.setObjectName("muted")
         note.setWordWrap(True)
         root.addWidget(note)
@@ -124,10 +159,32 @@ class GeminiSettingsDialog(QDialog):
             return
         try:
             keyring.set_password(SERVICE, "user-api-key", value)
+            self.save_model_choice()
             self.api_status.setText("API anahtarı Windows kimlik bilgisi kasasına kaydedildi.")
             QMessageBox.information(self, "Gemini API", "API anahtarı güvenli yerel kasaya kaydedildi.")
         except Exception as exc:
             QMessageBox.critical(self, "Gemini API", f"Anahtar güvenli biçimde kaydedilemedi: {exc}")
+
+    def delete_key(self):
+        answer = QMessageBox.question(self, "API anahtarı silinsin mi?", "Kayıtlı Gemini API anahtarı bu Windows kullanıcı hesabının kimlik bilgisi kasasından silinecek.", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            keyring.delete_password(SERVICE, "user-api-key")
+            self.key_input.clear()
+            self.api_status.setText("Kayıtlı API anahtarı silindi.")
+        except keyring.errors.PasswordDeleteError:
+            self.api_status.setText("Silinecek kayıtlı API anahtarı bulunamadı.")
+        except Exception as exc:
+            QMessageBox.warning(self, "Gemini API", f"Anahtar silinemedi: {exc}")
+
+    def save_model_choice(self):
+        model = self.model_combo.currentData()
+        if model:
+            try:
+                keyring.set_password(SERVICE, "model", str(model))
+            except Exception:
+                pass
 
     def test_key(self):
         value = self.key_input.text().strip()
@@ -135,29 +192,35 @@ class GeminiSettingsDialog(QDialog):
             QMessageBox.warning(self, "Gemini API", "Test için API anahtarını gir.")
             return
         self.api_status.setText("Google Gemini bağlantısı kontrol ediliyor…")
-        try:
-            request = urllib.request.Request(
-                MODELS_URL,
-                headers={"x-goog-api-key": value, "Accept": "application/json"},
-                method="GET"
-            )
-            with urllib.request.urlopen(request, timeout=15) as response:
-                data = json.loads(response.read().decode("utf-8"))
-            models = [m for m in data.get("models", []) if "generateContent" in m.get("supportedGenerationMethods", [])]
-            models.sort(key=lambda m: m.get("name", ""))
-            self.model_combo.clear()
-            for model in models:
-                name = model.get("name", "").removeprefix("models/")
-                self.model_combo.addItem(f"{name}  ·  {model.get('displayName', name)}", name)
-            preferred = self.model_combo.findData("gemini-2.5-flash")
-            if preferred >= 0:
-                self.model_combo.setCurrentIndex(preferred)
-            self.api_status.setText(f"Bağlantı başarılı. {len(models)} metin üretimi destekleyen model listelendi. Anahtarı ayrıca kaydetmeyi unutma.")
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")[:500]
-            self.api_status.setText(f"Google API yanıtı: HTTP {exc.code}. {detail}")
-        except Exception as exc:
-            self.api_status.setText(f"Bağlantı kurulamadı: {type(exc).__name__}: {exc}")
+        self.test_btn.setEnabled(False)
+        self.model_worker = ModelFetchWorker(value, self)
+        self.model_worker.completed.connect(self.models_loaded)
+        self.model_worker.failed.connect(self.models_failed)
+        self.model_worker.start()
+
+    def models_loaded(self, models):
+        self.model_combo.clear()
+        for model in models:
+            name = model.get("name", "").removeprefix("models/")
+            self.model_combo.addItem(f"{name}  ·  {model.get('displayName', name)}", name)
+        preferred = self.model_combo.findData("gemini-2.5-flash")
+        if preferred >= 0:
+            self.model_combo.setCurrentIndex(preferred)
+        self.save_model_choice()
+        self.api_status.setText(
+            f"Bağlantı başarılı. {len(models)} metin üretimi destekleyen model listelendi. "
+            "Modelin listelenmesi ücretsiz kullanım garantisi değildir; erişim ve kota Google projesine göre değişir."
+        )
+        self.test_btn.setEnabled(True)
+
+    def models_failed(self, message):
+        self.api_status.setText(message)
+        self.test_btn.setEnabled(True)
+
+    def closeEvent(self, event):
+        if self.model_worker and self.model_worker.isRunning():
+            self.model_worker.wait(16000)
+        event.accept()
 
     def run_test_command(self):
         command = self.command_input.text().strip().casefold()
@@ -171,7 +234,7 @@ class GeminiSettingsDialog(QDialog):
             self.countdown.setText("Komut tanınmadı. Komutları aynen yazıp tekrar dene.")
             return
         self.deadline = datetime.now(timezone.utc) + timedelta(seconds=seconds)
-        self.countdown.setText("TEST MODU — Gemini API kotası doldu. Çeviri duraklatıldı. Yeni API ekleyebilir veya yenilenmeyi bekleyebilirsin.")
+        self.countdown.setText("TEST MODU — Çeviri geçici olarak duraklatıldı. Çalışman güvende; tamamlanan ilerleme kaydedildi. Yeni bir API anahtarı ekleyebilir veya bekleyebilirsin.")
         self.timer.start()
         self.update_countdown()
         self.command_input.clear()
@@ -183,9 +246,9 @@ class GeminiSettingsDialog(QDialog):
         hours, remainder = divmod(remaining, 3600)
         minutes, seconds = divmod(remainder, 60)
         self.countdown.setText(
-            f"TEST MODU — Kota yenilenmesine kalan süre: {hours:02d}:{minutes:02d}:{seconds:02d}"
+            f"TEST MODU — Çeviriye devam etmeden önce tahmini bekleme süresi: {hours:02d}:{minutes:02d}:{seconds:02d}"
         )
         if remaining <= 0:
             self.timer.stop()
-            self.countdown.setText("TEST TAMAMLANDI — Simüle edilen kota süresi doldu. Gerçek API kotası etkilenmedi.")
+            self.countdown.setText("TEST TAMAMLANDI — Bekleme süresi sona erdi. Çeviriye devam etme davranışını şimdi test edebilirsin. Gerçek API kotası etkilenmedi.")
             self.deadline = None

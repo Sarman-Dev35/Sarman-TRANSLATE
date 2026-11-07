@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
@@ -10,8 +10,9 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QTabWidget
 )
 
-from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest
+from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest, installed_patch_languages
 from gemini_settings import GeminiSettingsDialog
+from translation_studio import TranslationStudio
 
 APP_NAME = "Sarman TRANSLATE"
 ACCENT = "#e58a43"
@@ -23,9 +24,13 @@ class ScanWorker(QThread):
     completed = Signal(list)
     failed = Signal(str)
 
+    def __init__(self, extra_roots=None):
+        super().__init__()
+        self.extra_roots = extra_roots or []
+
     def run(self):
         try:
-            self.completed.emit(discover_games())
+            self.completed.emit(discover_games(self.extra_roots))
         except Exception as exc:
             self.failed.emit(str(exc))
 
@@ -53,8 +58,11 @@ class MainWindow(QMainWindow):
         self.games: list[Game] = []
         self.worker = None
         self.patch_path: str | None = None
+        self.patch_manifest: dict | None = None
         self.build_ui()
         self.apply_style()
+        # Start discovery after the event loop begins so the window remains responsive.
+        QTimer.singleShot(150, self.start_scan)
 
     def build_ui(self):
         central = QWidget()
@@ -95,7 +103,7 @@ class MainWindow(QMainWindow):
         version = QLabel("DESKTOP  ·  ÖN SÜRÜM\nYerelleştirme araçları")
         version.setObjectName("sideFoot")
         side.addWidget(version)
-        shell.addWidget(side)
+        shell.addWidget(sidebar)
 
         content = QWidget()
         content.setObjectName("content")
@@ -106,7 +114,7 @@ class MainWindow(QMainWindow):
         heading = QVBoxLayout()
         self.page_title = QLabel("Oyun kütüphanesi")
         self.page_title.setObjectName("pageTitle")
-        self.page_subtitle = QLabel("Kurulu oyunlarını bul ve yerelleştirme çalışmalarını yönet.")
+        self.page_subtitle = QLabel("Kurulu oyunlarını otomatik bul; dil dosyalarını ve Sarman yama durumunu görüntüle.")
         self.page_subtitle.setObjectName("muted")
         heading.addWidget(self.page_title)
         heading.addWidget(self.page_subtitle)
@@ -135,7 +143,7 @@ class MainWindow(QMainWindow):
         eyebrow.setObjectName("eyebrow")
         title = QLabel("Oyunlarını keşfet.")
         title.setObjectName("heroTitle")
-        desc = QLabel("Kütüphaneni tara, oyununu seç ve kullanmak istediğin Türkçe yamayı güvenli biçimde yönet. Tarama sırasında oyun dosyalarına dokunulmaz.")
+        desc = QLabel("Uygulama kurulu oyunlarını desteklenen platform kayıtlarından otomatik bulur. Algılanan dil dosyaları ve Sarman yamalarının durumu listelenir. Tarama oyun dosyalarını değiştirmez; dil ipuçları oyunun menüde o dili sunduğunu tek başına kanıtlamaz.")
         desc.setObjectName("muted")
         desc.setWordWrap(True)
         h.addWidget(eyebrow)
@@ -144,7 +152,7 @@ class MainWindow(QMainWindow):
         lib.addWidget(hero)
         stats = QHBoxLayout()
         self.game_count = StatCard("Bulunan oyun", "0")
-        self.source_count = StatCard("Tarama kaynakları", "Steam  ·  Epic  ·  Klasörler")
+        self.source_count = StatCard("Tarama kaynakları", "Steam  ·  Epic  ·  Microsoft Store  ·  Xbox  ·  Windows")
         stats.addWidget(self.game_count)
         stats.addWidget(self.source_count, 2)
         lib.addLayout(stats)
@@ -158,12 +166,19 @@ class MainWindow(QMainWindow):
         self.search.setMaximumWidth(300)
         self.search.textChanged.connect(self.render_games)
         row.addWidget(self.search)
+        self.studio_btn = QPushButton("Çeviri Atölyesi")
+        self.studio_btn.setObjectName("primary")
+        self.studio_btn.setEnabled(False)
+        self.studio_btn.clicked.connect(self.open_translation_studio)
+        row.addWidget(self.studio_btn)
         lib.addLayout(row)
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["OYUN", "KAYNAK", "KURULUM KONUMU"])
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["OYUN", "KAYNAK", "KURULUM KONUMU", "ALGILANAN DİLLER", "SARMAN YAMASI"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -270,6 +285,13 @@ class MainWindow(QMainWindow):
             QLabel#warning { color:#dca879; background:#211b16; border:1px solid #493323; border-radius:8px; padding:12px; }
         """)
 
+    def closeEvent(self, event):
+        if self.worker and self.worker.isRunning():
+            QMessageBox.information(self, APP_NAME, "Oyun taraması tamamlanana kadar uygulama kapatılamaz.")
+            event.ignore()
+            return
+        event.accept()
+
     def open_gemini_settings(self):
         dialog = GeminiSettingsDialog(self)
         dialog.exec()
@@ -277,7 +299,7 @@ class MainWindow(QMainWindow):
     def page_changed(self, index):
         is_patch = index == 1
         self.page_title.setText("Yama merkezi" if is_patch else "Oyun kütüphanesi")
-        self.page_subtitle.setText("Harici Türkçe yamalarını güvenli biçimde yönet." if is_patch else "Kurulu oyunlarını bul ve yerelleştirme çalışmalarını yönet.")
+        self.page_subtitle.setText("Harici Türkçe yamalarını güvenli biçimde yönet." if is_patch else "Kurulu oyunlarını otomatik bul; dil dosyalarını ve Sarman yama durumunu görüntüle.")
         self.nav_library.setObjectName("navButton" if is_patch else "navActive")
         self.nav_patch.setObjectName("navActive" if is_patch else "navButton")
         self.nav_library.style().unpolish(self.nav_library)
@@ -295,6 +317,8 @@ class MainWindow(QMainWindow):
         self.worker.start()
 
     def scan_finished(self, games):
+        self.studio_btn.setEnabled(False)
+        self.install_btn.setEnabled(False)
         self.games = games
         self.game_count.value.setText(str(len(games)))
         self.render_games()
@@ -313,7 +337,11 @@ class MainWindow(QMainWindow):
         items = [g for g in self.games if query in g.name.casefold() or query in g.platform.casefold() or query in g.path.casefold()]
         self.table.setRowCount(len(items))
         for row, game in enumerate(items):
-            for col, value in enumerate((game.name, game.platform, game.path)):
+            patched = installed_patch_languages(game.path)
+            detected = " · ".join(game.detected_languages) if game.detected_languages else "Belirlenemedi"
+            patch_status = " · ".join(code.upper() for code in sorted(patched)) + " yüklü" if patched else "Yüklü değil"
+            values = (game.name, game.platform, game.path, detected, patch_status)
+            for col, value in enumerate(values):
                 cell = QTableWidgetItem(value)
                 cell.setToolTip(value)
                 if col == 0:
@@ -334,11 +362,21 @@ class MainWindow(QMainWindow):
     def selection_changed(self):
         game = self.selected_game()
         if game:
+            self.studio_btn.setEnabled(True)
             self.target_label.setText(f"{game.name}  ·  {game.path}")
             self.install_btn.setEnabled(bool(self.patch_path))
         else:
+            self.studio_btn.setEnabled(False)
             self.target_label.setText("Önce Oyun kütüphanesi bölümünden bir oyun seç.")
             self.install_btn.setEnabled(False)
+
+    def open_translation_studio(self):
+        game = self.selected_game()
+        if not game:
+            QMessageBox.information(self, APP_NAME, "Önce oyun listesinden bir oyun seç.")
+            return
+        dialog = TranslationStudio(game, self)
+        dialog.exec()
 
     def choose_patch(self):
         filename, _ = QFileDialog.getOpenFileName(self, "Sarman yama paketi seç", "", "Yama paketleri (*.zip)")
@@ -347,17 +385,23 @@ class MainWindow(QMainWindow):
         try:
             manifest = inspect_patch(filename)
             self.patch_path = filename
+            self.patch_manifest = manifest
             self.patch_file_label.setText(filename)
             self.patch_info.setText(f"{manifest['name']}  ·  Sürüm {manifest['version']}  ·  {len(manifest['files'])} dosya")
             self.install_btn.setEnabled(self.selected_game() is not None)
         except PatchError as exc:
             self.patch_path = None
+            self.patch_manifest = None
             self.install_btn.setEnabled(False)
             QMessageBox.warning(self, APP_NAME, str(exc))
 
     def apply_patch(self):
         game = self.selected_game()
         if not game or not self.patch_path:
+            return
+        target_game = (self.patch_manifest or {}).get("target_game")
+        if target_game and target_game.casefold() != game.name.casefold():
+            QMessageBox.warning(self, APP_NAME, f"Bu yama '{target_game}' için hazırlanmış; seçili oyun '{game.name}'. Yanlış oyuna yükleme engellendi.")
             return
         answer = QMessageBox.question(self, "Yama yüklensin mi?",
             f"'{game.name}' klasörüne dosya yazılacak. Mevcut dosyalar yedeklenecek. Devam edilsin mi?",
@@ -366,6 +410,7 @@ class MainWindow(QMainWindow):
             return
         try:
             result = install_patch(self.patch_path, game.path)
+            self.render_games()
             QMessageBox.information(self, APP_NAME, f"{result['name']} yüklendi.\nYedek: {result['backup']}")
         except (PatchError, OSError) as exc:
             QMessageBox.critical(self, APP_NAME, f"Yama yüklenemedi:\n{exc}")
@@ -382,6 +427,7 @@ class MainWindow(QMainWindow):
             return
         try:
             name = uninstall_latest(game.path)
+            self.render_games()
             QMessageBox.information(self, APP_NAME, f"{name} geri alındı.")
         except (PatchError, OSError) as exc:
             QMessageBox.warning(self, APP_NAME, str(exc))
@@ -392,6 +438,7 @@ def main():
     app.setApplicationName(APP_NAME)
     window = MainWindow()
     window.show()
+    QTimer.singleShot(300, window.start_scan)
     sys.exit(app.exec())
 
 
