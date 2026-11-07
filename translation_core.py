@@ -235,8 +235,9 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
         if not source_path.is_file():
             raise StaleSourceError(f"{relative}: kaynak dosya artık bulunamıyor. Yeniden tara.")
         try:
-            with source_path.open("r", encoding="utf-8-sig", newline="") as stream:
-                raw = stream.read()
+            source_bytes = source_path.read_bytes()
+            had_bom = source_bytes.startswith(b"\xef\xbb\xbf")
+            raw = source_bytes.decode("utf-8-sig")
         except (OSError, UnicodeError) as exc:
             raise StaleSourceError(f"{relative}: kaynak dosya okunamıyor. Dosya değişmiş veya UTF-8 dışı olabilir.") from exc
         suffix = source_path.suffix.casefold()
@@ -294,9 +295,20 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                         if node[last] != item.source:
                             raise StaleSourceError(f"{relative}: kaynak metin taramadan sonra değişmiş. Yeniden tara.")
                         node[last] = item.translated
-                encoded = json.dumps(data, ensure_ascii=False, indent=2) + newline
+                # Preserve source indentation, ASCII escaping and final newline.
+                indent_match = re.search(r"\n([ \t]+)[^ \t\r\n]", raw)
+                indent = indent_match.group(1) if indent_match else None
+                ensure_ascii = bool(re.search(r"\\u[0-9a-fA-F]{4}", raw)) and not any(ord(ch) > 127 for ch in raw)
+                encoded = json.dumps(data, ensure_ascii=ensure_ascii, indent=indent)
+                if raw.endswith(("\n", "\r")):
+                    encoded += newline
             elif suffix == ".csv":
-                rows = list(csv.reader(io.StringIO(raw, newline="")))
+                # Retain delimiters, quoting and escaping from CSV/TSV source files.
+                try:
+                    dialect = csv.Sniffer().sniff(raw[:8192], delimiters=",;\t|")
+                except csv.Error:
+                    dialect = csv.excel
+                rows = list(csv.reader(io.StringIO(raw, newline=""), dialect=dialect))
                 for item in items:
                     match = re.fullmatch(r"row\[(\d+)\]\.col\[(\d+)\]", item.locator)
                     if match:
@@ -306,7 +318,8 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                                 raise StaleSourceError(f"{relative}: kaynak metin taramadan sonra değişmiş. Yeniden tara.")
                             rows[ri][ci] = item.translated
                 buffer = io.StringIO(newline="")
-                csv.writer(buffer, lineterminator=newline).writerows(rows)
+                dialect.lineterminator = newline
+                csv.writer(buffer, dialect=dialect).writerows(rows)
                 encoded = buffer.getvalue()
             elif suffix == ".ini":
                 lines = raw.splitlines()
@@ -343,7 +356,7 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                 encoded = newline.join(lines) + (newline if raw.endswith(("\n", "\r")) else "")
             else:
                 continue
-            output[relative] = encoded.encode("utf-8")
+            output[relative] = (b"\xef\xbb\xbf" if had_bom else b"") + encoded.encode("utf-8")
         except StaleSourceError:
             raise
         except (ValueError, KeyError, IndexError, TypeError, csv.Error):
