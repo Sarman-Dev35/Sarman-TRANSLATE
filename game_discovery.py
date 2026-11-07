@@ -233,7 +233,11 @@ def _detect_language_files(game_root: Path) -> tuple[str, ...]:
                 dirs[:] = []
                 continue
             dirs[:] = [d for d in dirs if d.casefold() not in {"engine", "plugins", "thirdparty", "redist", "redistributable", "crashreporter", "__pycache__"}]
-            if rel.parts and not any(part.casefold() in _LOCALE_DIRS for part in rel.parts):
+            for part in rel.parts:
+                code = _LANGUAGE_CODES.get(part.casefold())
+                if code:
+                    found.add(code)
+            if rel.parts and not any(part.casefold() in _LOCALE_DIRS or part.casefold() in _LANGUAGE_CODES for part in rel.parts):
                 continue
             for filename in files:
                 scanned += 1
