@@ -118,7 +118,7 @@ class TranslationCoreTests(unittest.TestCase):
             (root / "text.json").write_text('{"hello":"Hello {player_name}"}', encoding="utf-8")
             entries = scan_game_texts(root)
             entries[0].translated = "Merhaba"
-            with self.assertRaisesRegex(ValueError, "değişkenleri"):
+            with self.assertRaisesRegex(ValueError, "Değişkenleri"):
                 create_translation_patch(root, entries, root / "bad.zip", "Demo")
             self.assertFalse((root / "bad.zip").exists())
 
