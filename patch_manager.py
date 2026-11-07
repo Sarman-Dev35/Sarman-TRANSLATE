@@ -131,7 +131,8 @@ def _matching_install_states(root: Path) -> list[tuple[int, Path, dict]]:
             state = json.loads(state_path.read_text(encoding="utf-8"))
             if not isinstance(state, dict) or state.get("schema") != 1:
                 continue
-            if Path(state.get("game_dir", "")).resolve() == root:
+            game_path = state.get("game_dir")
+            if isinstance(game_path, str) and game_path and Path(game_path).resolve() == root:
                 states.append((state_path.stat().st_mtime_ns, state_path, state))
         except (OSError, ValueError, TypeError, RuntimeError):
             continue
@@ -144,11 +145,17 @@ def incomplete_patch_installs(game_dir: str | Path) -> list[dict]:
         root = Path(game_dir).resolve()
     except (OSError, ValueError, RuntimeError, TypeError):
         return []
-    return [
-        {"name": str(state.get("name", "Yama")), "journal": str(path), "files": len(state.get("files", []))}
-        for _, path, state in _matching_install_states(root)
-        if state.get("status") == "installing"
-    ]
+    pending = []
+    for _, path, state in _matching_install_states(root):
+        if state.get("status") != "installing":
+            continue
+        files = state.get("files")
+        pending.append({
+            "name": str(state.get("name", "Yama")),
+            "journal": str(path),
+            "files": len(files) if isinstance(files, list) else 0,
+        })
+    return pending
 
 
 def rollback_incomplete_patches(game_dir: str | Path) -> list[str]:
