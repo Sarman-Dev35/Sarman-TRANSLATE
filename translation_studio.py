@@ -129,7 +129,7 @@ class TranslationStudio(QDialog):
         self.engine_info.setStyleSheet("color:#dca879;background:#211b16;border:1px solid #493323;border-radius:7px;padding:9px;")
         root.addWidget(self.engine_info)
         try:
-            report = inspect_game_engine(game.path)
+            report = inspect_game_engine(self.game.path)
             self.engine_info.setText(
                 f"Motor: {report.engine} · Güven: {report.confidence} · {report.status}\\n"
                 f"Desteklenen metin dosyası: {report.supported_text_files} · Özel motor dosyası: {report.native_localization_files}\\n"
