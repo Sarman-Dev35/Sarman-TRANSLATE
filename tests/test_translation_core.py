@@ -37,6 +37,15 @@ class TranslationCoreTests(unittest.TestCase):
         self.assertEqual(validate_translation("Hello {player_name}", "Merhaba {player_name}"), [])
         self.assertTrue(validate_translation("Hello %s", "Merhaba"))
 
+    def test_deeply_nested_json_does_not_abort_other_file_scans(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            nested = '{"a":' * 1100 + '"Deep text"' + '}' * 1100
+            (root / "deep.json").write_text(nested, encoding="utf-8")
+            (root / "valid.json").write_text('{"title":"Valid text"}', encoding="utf-8")
+            entries = scan_game_texts(root)
+            self.assertEqual([item.source for item in entries], ["Valid text"])
+
     def test_scan_selects_only_the_requested_locale_and_keeps_neutral_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
