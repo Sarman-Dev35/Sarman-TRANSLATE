@@ -14,7 +14,7 @@ MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_FILES = 5000
 PLACEHOLDER_RE = re.compile(
     r"\{[^{}]+\}|\$\{[^{}]+\}|%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[a-zA-Z%]|"
-    r"\[[A-Za-z0-9_.:-]+\]|<[^>]+>|\\[nrt\\]|\u\\[0-9a-fA-F]{4}"
+    r"\[[A-Za-z0-9_.:-]+\]|<[^>]+>|\\\\[nrt]"
 )
 
 @dataclass
@@ -42,7 +42,7 @@ def _is_translatable(value: str) -> bool:
 
 
 def _entry(file: Path, root: Path, locator: str, value: str) -> TextEntry | None:
-    leaf = re.split(r"[.\\[\\]]", locator)[-1].casefold()
+    leaf = locator.replace("[", ".").replace("]", "").split(".")[-1].casefold()
     if leaf in {"id", "uuid", "guid", "appid", "assetid", "objectid"}:
         return None
     if not _is_translatable(value):
@@ -169,12 +169,32 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                     locator = item.locator.removeprefix("root").lstrip(".")
                     if not locator:
                         continue
-                    parts = re.findall(r"[^.\[\]]+|\[(\d+)\]", locator)
                     keys = []
-                    for token in parts:
-                        token = token[0] if isinstance(token, tuple) else token
-                        if token:
-                            keys.append(int(token) if token.isdigit() else token)
+                    token = ""
+                    index = 0
+                    while index < len(locator):
+                        char = locator[index]
+                        if char == ".":
+                            if token:
+                                keys.append(token)
+                                token = ""
+                        elif char == "[":
+                            if token:
+                                keys.append(token)
+                                token = ""
+                            end = locator.find("]", index + 1)
+                            if end < 0:
+                                raise ValueError("Geçersiz JSON konumu")
+                            number = locator[index + 1:end]
+                            if not number.isdigit():
+                                raise ValueError("Geçersiz JSON dizi konumu")
+                            keys.append(int(number))
+                            index = end
+                        else:
+                            token += char
+                        index += 1
+                    if token:
+                        keys.append(token)
                     node = data
                     for key in keys[:-1]:
                         node = node[key]
