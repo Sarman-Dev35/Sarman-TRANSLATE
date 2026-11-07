@@ -191,7 +191,7 @@ class TranslationStudio(QDialog):
         self._set_busy(False)
         self.save()
         self.status.setText("Kota nedeniyle duraklatıldı. Tamamlanan çeviriler kaydedildi.")
-        QMessageBox.warning(self, "Gemini kotası", "API kotası doldu. İlerleme kaydedildi; kota yenilendiğinde veya uygun bir API anahtarı eklediğinde bekleyenleri sürdürebilirsin.\n\n" + message)
+        QMessageBox.warning(self, "Gemini kotası", "API kotası doldu. İlerleme kaydedildi; aynı Google Cloud projesinin kotası yenilendiğinde veya farklı bir projeye ait uygun anahtar eklediğinde bekleyenleri sürdürebilirsin.\n\n" + message)
 
     def _translation_failed(self, message):
         self._set_busy(False)
@@ -206,6 +206,7 @@ class TranslationStudio(QDialog):
     def _set_busy(self, busy):
         for button in (self.scan_btn, self.translate_btn, self.export_btn):
             button.setEnabled(not busy)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers if busy else (QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed))
 
     def export_patch(self):
         if not any(e.translated.strip() for e in self.entries):
