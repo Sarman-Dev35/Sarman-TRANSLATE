@@ -314,7 +314,7 @@ class TranslationStudio(QDialog):
             self.status.setText(f"Tarama tamamlandı · {len(self.entries)} metin bulundu.")
         except Exception as exc:
             self.status.setText("Tarama sonuçları arayüze aktarılamadı.")
-            QMessageBox.warning(self, "Metin tarama", f"Tarama tamamlandı ancak sonuçlar işlenemedi:\\n{exc}")
+            QMessageBox.warning(self, "Metin tarama", f"Tarama tamamlandı ancak sonuçlar işlenemedi:\n{exc}")
         finally:
             self._set_scan_busy(False)
             self.refresh_model_status()
@@ -347,7 +347,7 @@ class TranslationStudio(QDialog):
         try:
             self.table.setRowCount(len(self.entries))
             for row, entry in enumerate(self.entries):
-                values = (entry.status, f"{entry.file}\\n{entry.locator}", entry.source, entry.translated)
+                values = (entry.status, f"{entry.file}\n{entry.locator}", entry.source, entry.translated)
                 for col, value in enumerate(values):
                     cell = QTableWidgetItem(value)
                     if col in (0, 1, 2):
