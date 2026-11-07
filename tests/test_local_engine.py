@@ -92,6 +92,19 @@ class LocalEngineTests(unittest.TestCase):
                 local_engine.uninstall_english_turkish_model()
                 self.assertTrue(glossary.exists())
 
+    def test_partial_model_download_is_visible_for_resume_and_removal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model_path = Path(tmp) / local_engine.MODEL_NAME
+            partial_path = model_path.with_suffix(model_path.suffix + ".part")
+            partial_path.write_bytes(b"partial")
+            with patch.object(local_engine, "MODEL_PATH", model_path):
+                status = local_engine.model_status()
+                self.assertFalse(status["installed"])
+                self.assertFalse(status["present"])
+                self.assertTrue(status["partial_present"])
+                self.assertTrue(local_engine.uninstall_english_turkish_model() is False or not partial_path.exists())
+                self.assertFalse(partial_path.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
