@@ -117,15 +117,6 @@ class MainWindow(QMainWindow):
         self.language_settings = QSettings("Sarman Studios", "Sarman TRANSLATE")
         self.patch_path: str | None = None
         self.patch_manifest: dict | None = None
-        self._theme_from = ("#f06a3d", "#a92f45")
-        self._theme_to = self._theme_from
-        self._theme_value = 1.0
-        self._active_game_path = None
-        self._theme_transition = ColorTransition()
-        self._theme_transition.valueChanged.connect(self._apply_theme_frame)
-        self._theme_animation = QPropertyAnimation(self._theme_transition, b"value", self)
-        self._theme_animation.setDuration(520)
-        self._theme_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
         self.build_ui()
         self.art_service = GameArtService(self)
         self.art_service.cover_ready.connect(self._game_art_ready)
