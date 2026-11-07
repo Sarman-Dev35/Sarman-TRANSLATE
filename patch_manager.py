@@ -13,6 +13,7 @@ APP_DATA = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Sarman" / "TRANS
 MAX_FILES = 2000
 MAX_FILE_SIZE = 64 * 1024 * 1024
 MAX_TOTAL_SIZE = 256 * 1024 * 1024
+ALLOWED_TEXT_SUFFIXES = {".json", ".csv", ".txt"}
 
 
 class PatchError(Exception):
@@ -42,6 +43,9 @@ def _load_manifest(path: str | Path):
             infos = zf.infolist()
             if len(infos) > MAX_FILES + 1:
                 raise PatchError("Yama paketi çok fazla dosya içeriyor.")
+            manifest_infos = [info for info in infos if info.filename == "sarman-patch.json"]
+            if len(manifest_infos) != 1 or manifest_infos[0].file_size > 1024 * 1024:
+                raise PatchError("Manifest eksik, yinelenmiş veya 1 MB sınırını aşıyor.")
             try:
                 raw = zf.read("sarman-patch.json")
                 manifest = json.loads(raw.decode("utf-8-sig"))
@@ -61,6 +65,8 @@ def _load_manifest(path: str | Path):
                 target = _safe_relative(item["target"])
                 if source == "sarman-patch.json" or source not in names:
                     raise PatchError(f"Pakette kaynak dosya bulunamadı: {source}")
+                if Path(source).suffix.casefold() not in ALLOWED_TEXT_SUFFIXES or target.suffix.casefold() not in ALLOWED_TEXT_SUFFIXES:
+                    raise PatchError("Yalnızca desteklenen metin/dil dosyaları (.json, .csv, .txt) yüklenebilir.")
                 if source.casefold() in seen_sources:
                     raise PatchError(f"Kaynak dosya birden fazla kez tanımlanmış: {source}")
                 if target.as_posix().casefold() in seen_targets:
@@ -74,6 +80,10 @@ def _load_manifest(path: str | Path):
                     raise PatchError("Sembolik bağlantı içeren yamalar kabul edilmiyor.")
                 if info.file_size > MAX_FILE_SIZE:
                     raise PatchError(f"Dosya boyutu sınırı aşıldı: {source}")
+                try:
+                    zf.read(info).decode("utf-8-sig")
+                except UnicodeDecodeError as exc:
+                    raise PatchError(f"Yama dosyası desteklenen UTF-8 metin biçiminde değil: {source}") from exc
                 total_size += info.file_size
                 if total_size > MAX_TOTAL_SIZE:
                     raise PatchError("Yamanın toplam açılmış boyutu sınırı aşıyor.")
