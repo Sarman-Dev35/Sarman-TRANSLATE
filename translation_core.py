@@ -42,6 +42,9 @@ def _is_translatable(value: str) -> bool:
 
 
 def _entry(file: Path, root: Path, locator: str, value: str) -> TextEntry | None:
+    leaf = re.split(r"[.\\[\\]]", locator)[-1].casefold()
+    if leaf in {"id", "uuid", "guid", "appid", "assetid", "objectid"}:
+        return None
     if not _is_translatable(value):
         return None
     relative = file.relative_to(root).as_posix()
