@@ -94,19 +94,19 @@ class GameArtService(QObject):
  def __init__(self,parent=None):
   super().__init__(parent);self.manager=QNetworkAccessManager(self)
   self.cache_dir=Path(os.environ.get("LOCALAPPDATA",Path.home()))/"Sarman"/"TRANSLATE"/"covers"
-  self.pending={};self.requested=set()
+  self.pending={};self.requested=set();self.game_names={}
  @staticmethod
  def _key(path):return hashlib.sha256(os.path.normcase(os.path.abspath(path)).encode("utf-8")).hexdigest()[:24]
  def request(self,game):
   path=str(game.path)
   if path in self.requested:return
-  self.requested.add(path);cache=self.cache_dir/(self._key(path)+".jpg")
+  self.requested.add(path);self.game_names[path]=str(game.name);cache=self.cache_dir/(self._key(path)+".jpg")
   if cache.is_file():
    image=QImage(str(cache))
    if not image.isNull():QTimer.singleShot(0,lambda p=path,i=image:self._emit(p,i));return
   appid=str(getattr(game,"app_id","") or "").strip()
   if appid.isdigit():self._download(path,f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg")
-  else:
+  elif any(token in str(getattr(game,"platform","")).casefold() for token in ("epic","xbox","microsoft","özel oyun","windows oyun")):
    url=QUrl("https://store.steampowered.com/api/storesearch/");q=QUrlQuery()
    q.addQueryItem("term",str(game.name)[:100]);q.addQueryItem("l","english");q.addQueryItem("cc","us");url.setQuery(q)
    self._send(path,"search",url.toString())
@@ -121,9 +121,14 @@ class GameArtService(QObject):
    data=bytes(reply.readAll())
    if phase=="search":
     items=json.loads(data.decode("utf-8")).get("items") or []
-    if items:
-     url=str(items[0].get("header_image") or "")
-     if url.startswith("https://"):self._download(path,url)
+    wanted=" ".join(self.game_names.get(path,"").casefold().split())
+    exact=next((item for item in items if " ".join(str(item.get("name","")).casefold().split())==wanted),None)
+    candidate=exact or (items[0] if items else None)
+    if candidate:
+     import difflib
+     score=difflib.SequenceMatcher(None,wanted," ".join(str(candidate.get("name","")).casefold().split())).ratio()
+     url=str(candidate.get("header_image") or "")
+     if url.startswith("https://") and (exact or score>=0.55):self._download(path,url)
     return
    image=QImage.fromData(data)
    if image.isNull() or image.width()<100 or image.height()<50:return
