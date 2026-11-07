@@ -67,7 +67,7 @@ def model_status() -> dict:
         "installed": installed,
         "present": present,
         "engine": "Tencent Hy-MT2 1.8B · GGUF Q4_K_M",
-        "message": "Hy-MT2 çeviri modeli hazır." if installed else "Hy-MT2 1.8B çeviri modeli henüz indirilmedi.",
+        "message": ("Hy-MT2 çeviri modeli hazır." if installed else "Model dosyası eksik veya bozuk; kaldırıp yeniden indir." if present else "Hy-MT2 1.8B çeviri modeli henüz indirilmedi."),
         "model_path": str(MODEL_PATH),
         "download_size": "yaklaşık 1,13 GB",
     }
@@ -131,8 +131,11 @@ def uninstall_english_turkish_model() -> bool:
     with _LOCK:
         if _MODEL is not None:
             close = getattr(_MODEL, "close", None)
-            if callable(close):
-                close()
+            try:
+                if callable(close):
+                    close()
+            except Exception as exc:
+                raise LocalTranslationError(f"Model belleği güvenli biçimde kapatılamadı: {exc}") from exc
             _MODEL = None
             gc.collect()
         removed = False
