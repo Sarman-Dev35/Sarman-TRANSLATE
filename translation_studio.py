@@ -14,8 +14,6 @@ from translation_core import TextEntry, scan_game_texts, load_workspace, save_wo
 from local_engine import translate_text, model_status, install_english_turkish_model, LocalTranslationError, glossary_items, set_glossary_term, delete_glossary_term
 from engine_support import inspect_game_engine
 
-SERVICE = "Sarman.TRANSLATE.Gemini"
-
 
 class TextScanWorker(QThread):
     completed = Signal(list)
@@ -199,6 +197,7 @@ class TranslationStudio(QDialog):
         self.save()
         self.status.setText(f"Tarama tamamlandı · {len(self.entries)} metin bulundu.")
         self._set_scan_busy(False)
+        self.refresh_model_status()
 
     def scan_failed(self, message):
         self._set_scan_busy(False)
