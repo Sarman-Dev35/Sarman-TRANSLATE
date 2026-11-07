@@ -39,12 +39,7 @@ Uygulama platform parolası istemez, istemci veritabanlarını kırmaz, lisans/D
 6. Çevirileri tabloda elle düzenleyip gözden geçir.
 7. **Yama ZIP'i oluştur** ile dışa aktar.
 
-Çeviri çalışma kayıtları `%LOCALAPPDATA%\Sarman\TRANSLATE\workspaces` altında tutulur. API anahtarı yalnızca Windows Credential Manager (WinVaultKeyring) üzerinden saklanır; güvenli backend yoksa kaydetme reddedilir. Anahtar kaynak koduna, oyun dosyalarına veya GitHub'a eklenmez. Beklenmeyen uygulama hataları `%LOCALAPPDATA%\Sarman\TRANSLATE\logs\application.log` dosyasına dönen günlüklerle kaydedilir.
-
-Gemini kotası Google Cloud projesine ve modele göre değişir. Aynı projede yeni API anahtarı oluşturmak proje kotasını artırmaz. Gerçek kota yenileme zamanı API tarafından kesin verilmediğinde uygulama tahmini geri sayım göstermez. Ücretsiz kullanımın kapsamı Google tarafından belirlenir; ücretsiz erişim veya limitsiz kullanım garantisi yoktur. Gemini model listesi `models.list` sayfaları üzerinden alınır ve `generateContent` destekleyen modeller filtrelenir; listelenen modelin ücretsiz veya bu projede kullanılabilir olduğu garanti edilmez.
-
-Kota akışını gerçek API kotasını tüketmeden denemek için Gemini API penceresindeki test komutlarından birini kullan: `/kotabitimiuyarısı1dk`, `/kotabitimiuyarısı1saat` veya `/kotabitimiuyarısıgünlük`. Sayaç çalışırken ayar penceresini kapatıp Çeviri Atölyesi'nde bekleyen çeviriyi başlat. Kuyruk API isteği göndermeden test amaçlı duraklatılır, çalışma kaydedilir; süre sona erdiğinde yeniden **Bekleyenleri çevir** ile devam edebilirsin. Bu simülasyon gerçek Gemini kotasını tüketmez.
-
+Çeviri çalışma kayıtları `%LOCALAPPDATA%\\Sarman\\TRANSLATE\\workspaces`, tekrar kullanılan çeviriler SQLite hafızasında, özel terimler `glossary.json` dosyasında tutulur.\n\nYerel model ilk indirmede internet bağlantısı gerektirir. Model kurulduktan sonra çeviri API anahtarı, kota veya internet bağlantısı olmadan yapılır. Argos modeli küçük bir makine çeviri ağıdır; sözlük oyun terimlerini tutarlı hale getirir ancak bağlama dayalı kelime oyunlarını her zaman kusursuz çözemez. Diyalogların son kontrolü kullanıcıya bırakılır.\n
 ## Desteklenen dosya biçimleri ve sınırlar
 
 Şu an çıkarma ve dışa aktarma için doğrulanmış biçimler: **JSON, CSV, TXT, INI**. Kütüphanedeki TR/EN/DE gibi etiketler oyun klasöründeki dil dosyası/klasörü ipuçlarıdır; oyunun bu dili ayarlardan etkinleştirebildiğini garanti etmez. `Sarman yaması` sütunu ise yalnızca Sarman TRANSLATE tarafından yüklenmiş ve kaydı bulunan yamaları gösterir. Diğer dosyalar (XML, RESX, PO, Unity/Unreal paketleri, özel arşivler, ikili varlıklar) bu sürümde otomatik değiştirilmez. Oyun motoruna özgü dil kayıt/etkinleştirme adımları ayrı adaptör gerektirir.
