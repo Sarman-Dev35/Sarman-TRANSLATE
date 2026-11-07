@@ -177,6 +177,7 @@ class TranslationStudio(QDialog):
         self.worker = None
         self.scan_worker = None
         self._scan_generation = 0
+        self._scan_busy = False
         self._rendering = False
         self.autosave_timer = QTimer(self)
         self.autosave_timer.setSingleShot(True)
@@ -283,6 +284,7 @@ class TranslationStudio(QDialog):
         worker = self.sender()
         if worker is self.scan_worker:
             self.scan_worker = None
+        self.refresh_model_status()
 
     def scan_completed(self, found):
         worker = self.sender()
@@ -312,10 +314,14 @@ class TranslationStudio(QDialog):
         QMessageBox.warning(self, "Metin tarama", message)
 
     def _set_scan_busy(self, busy):
+        self._scan_busy = busy
         self.scan_btn.setEnabled(not busy)
-        self.translate_btn.setEnabled(not busy)
-        self.export_btn.setEnabled(not busy)
-        self.table.setEditTriggers(QTableWidget.NoEditTriggers if busy else (QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed))
+        self.export_btn.setEnabled(not busy and bool(self.entries))
+        self.table.setEditTriggers(
+            QTableWidget.NoEditTriggers if busy
+            else (QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed)
+        )
+        self.refresh_model_status()
 
 
     def render(self):
@@ -369,7 +375,11 @@ class TranslationStudio(QDialog):
             self.model_btn.setText("Bozuk modeli yeniden indir")
         else:
             self.model_btn.setText("Modeli indir · 1,13 GB")
-        busy = self._operation_busy or bool(self.worker and self.worker.isRunning())
+        busy = (
+            self._operation_busy or self._scan_busy
+            or bool(self.worker and self.worker.isRunning())
+            or bool(self.scan_worker and self.scan_worker.isRunning())
+        )
         self.model_btn.setEnabled(not info["installed"] and not busy)
         has_model_files = bool(info.get("present") or info.get("partial_present"))
         self.remove_model_btn.setVisible(has_model_files)
@@ -447,6 +457,11 @@ class TranslationStudio(QDialog):
         QMessageBox.warning(self, "Çeviri modeli", message)
 
     def translate_pending(self):
+        if self.scan_worker and self.scan_worker.isRunning():
+            QMessageBox.information(self, "Tarama sürüyor", "Oyun metin taraması tamamlanana kadar çeviri başlatılamaz.")
+            return
+        if self.worker and self.worker.isRunning():
+            return
         if self.source_language != "EN":
             QMessageBox.information(
                 self, "Kaynak dil desteklenmiyor",
@@ -524,7 +539,7 @@ class TranslationStudio(QDialog):
 
     def closeEvent(self, event):
         if (self.worker and self.worker.isRunning()) or (self.scan_worker and self.scan_worker.isRunning()):
-            QMessageBox.information(self, "İşlem sürüyor", "Tarama veya çeviri işlemi tamamlanana kadar bu pencereyi kapatamazsın. Tamamlanan çeviriler otomatik kaydedilir.")
+            QMessageBox.information(self, "İşlem sürüyor", "Model indirme, tarama veya çeviri işlemi tamamlanana kadar bu pencereyi kapatamazsın. Tamamlanan çeviriler otomatik kaydedilir.")
             event.ignore()
             return
         if self.autosave_timer.isActive():
