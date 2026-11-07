@@ -230,12 +230,14 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
     output: dict[str, bytes] = {}
     for relative, items in grouped.items():
         source_path = (root / _safe_workspace_path(relative)).resolve()
-        if root not in source_path.parents or not source_path.is_file():
-            continue
+        if root not in source_path.parents:
+            raise ValueError("Çalışma dosyasında oyun klasörü dışına çıkan kaynak yolu bulundu.")
+        if not source_path.is_file():
+            raise StaleSourceError(f"{relative}: kaynak dosya artık bulunamıyor. Yeniden tara.")
         try:
             raw = source_path.read_text(encoding="utf-8-sig")
-        except (OSError, UnicodeError):
-            continue
+        except (OSError, UnicodeError) as exc:
+            raise StaleSourceError(f"{relative}: kaynak dosya okunamıyor. Dosya değişmiş veya UTF-8 dışı olabilir.") from exc
         suffix = source_path.suffix.casefold()
         newline = "\r\n" if "\r\n" in raw else ("\r" if "\r" in raw and "\n" not in raw else "\n")
         try:
