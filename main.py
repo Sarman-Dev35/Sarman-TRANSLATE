@@ -93,6 +93,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(APP_NAME)
         icon_file = asset_path("sarman-translate.ico")
+        if not icon_file.is_file():
+            icon_file = asset_path("sarman-translate.svg")
         if icon_file.is_file():
             self.setWindowIcon(QIcon(str(icon_file)))
         self.resize(1180, 760)
@@ -124,6 +126,8 @@ class MainWindow(QMainWindow):
         brand_icon = QLabel()
         brand_icon.setFixedSize(42, 42)
         brand_file = asset_path("sarman-translate.ico")
+        if not brand_file.is_file():
+            brand_file = asset_path("sarman-translate.svg")
         if brand_file.is_file():
             brand_icon.setPixmap(QIcon(str(brand_file)).pixmap(42, 42))
         brand_row.addWidget(brand_icon)
@@ -500,6 +504,8 @@ def main():
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion("0.1.0")
     icon_file = asset_path("sarman-translate.ico")
+    if not icon_file.is_file():
+        icon_file = asset_path("sarman-translate.svg")
     if icon_file.is_file():
         app.setWindowIcon(QIcon(str(icon_file)))
     window = MainWindow()
