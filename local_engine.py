@@ -69,7 +69,7 @@ def model_status() -> dict:
             with MODEL_PATH.open("rb") as model_file:
                 header_valid = model_file.read(4) == b"GGUF"
         installed = present and not MODEL_PATH.is_symlink() and header_valid and MODEL_PATH.stat().st_size == MODEL_FILE_SIZE
-    except OSError:
+    except (OSError, RuntimeError, ValueError):
         present = False
         partial_present = False
         header_valid = False
