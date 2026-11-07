@@ -32,11 +32,18 @@ jobs:
         run: |
           python - <<'PY'
           from PySide6.QtWidgets import QApplication
+          from tempfile import TemporaryDirectory
           from main import MainWindow
+          from game_discovery import Game
+          from translation_studio import TranslationStudio
           app = QApplication([])
           window = MainWindow()
           assert window.pages.count() == 2
           assert window.studio_btn.isEnabled() is False
-          print("Main window UI smoke test passed.")
+          with TemporaryDirectory() as game_dir:
+              studio = TranslationStudio(Game("Smoke Test", "Test", game_dir), window)
+              assert studio.table.columnCount() == 4
+              studio.close()
+          print("Main window and translation studio UI smoke tests passed.")
           window.close()
           PY
