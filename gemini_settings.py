@@ -10,6 +10,8 @@ from urllib.parse import urlencode
 from quota_testing import set_quota_test, quota_test_remaining, clear_quota_test
 
 import keyring
+
+import credential_store
 from PySide6.QtCore import QTimer, Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
@@ -162,7 +164,7 @@ class GeminiSettingsDialog(QDialog):
 
     def load_key(self):
         try:
-            value = keyring.get_password(SERVICE, "user-api-key")
+            value = credential_store.get_password(SERVICE, "user-api-key")
             if value:
                 self.key_input.setText(value)
                 self.api_status.setText("Kayıtlı API anahtarı bulundu. Bağlantıyı test edebilirsin.")
@@ -180,7 +182,7 @@ class GeminiSettingsDialog(QDialog):
             QMessageBox.warning(self, "Gemini API", "Önce API anahtarını gir.")
             return
         try:
-            keyring.set_password(SERVICE, "user-api-key", value)
+            credential_store.set_password(SERVICE, "user-api-key", value)
             self.save_model_choice()
             self.api_status.setText("API anahtarı Windows kimlik bilgisi kasasına kaydedildi.")
             QMessageBox.information(self, "Gemini API", "API anahtarı güvenli yerel kasaya kaydedildi.")
@@ -192,7 +194,7 @@ class GeminiSettingsDialog(QDialog):
         if answer != QMessageBox.Yes:
             return
         try:
-            keyring.delete_password(SERVICE, "user-api-key")
+            credential_store.delete_password(SERVICE, "user-api-key")
             self.key_input.clear()
             self.api_status.setText("Kayıtlı API anahtarı silindi.")
         except keyring.errors.PasswordDeleteError:
@@ -204,7 +206,7 @@ class GeminiSettingsDialog(QDialog):
         model = self.model_combo.currentData()
         if model:
             try:
-                keyring.set_password(SERVICE, "model", str(model))
+                credential_store.set_password(SERVICE, "model", str(model))
             except Exception:
                 pass
 
@@ -222,7 +224,7 @@ class GeminiSettingsDialog(QDialog):
 
     def models_loaded(self, models):
         try:
-            saved_model = keyring.get_password(SERVICE, "model")
+            saved_model = credential_store.get_password(SERVICE, "model")
         except Exception:
             saved_model = None
         self.model_combo.blockSignals(True)
