@@ -15,7 +15,7 @@ Sarman TRANSLATE, Windows için oyun yerelleştirme çalışma alanıdır. Kurul
 - JSON, CSV, TXT ve INI metin dosyalarını salt okunur tarama.
 - Çeviri Atölyesi: kaynak/çeviri tabloları, elle düzenleme, Gemini kuyruğu ve yerel çalışma kaydı.
 - Gemini model listesini API'den alma; kullanıcı kendi API anahtarını ekler.
-- Windows kimlik bilgisi kasasında yerel API anahtarı saklama ve silme.
+- Windows Credential Manager (WinVaultKeyring) içinde yerel API anahtarı saklama ve silme; güvenli Windows backend bulunmazsa anahtar kaydetmeyi reddetme.
 - Yer tutucu/biçim kodu ve satır sonu kalite kontrolü.
 - Desteklenen JSON/CSV/TXT/INI dosyalarından manifestli ZIP yama oluşturma.
 - Yama paketinde yol geçişi, symlink, dosya sayısı/boyutu, dosya türü ve UTF-8 kontrolleri.
