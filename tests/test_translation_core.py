@@ -57,7 +57,7 @@ class TranslationCoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "locale.csv").write_text(
-                "key,en-US,de-DE,fr-FR\\nstart,Start,Spiel starten,Démarrer\\n",
+                "key,en-US,de-DE,fr-FR\nstart,Start,Spiel starten,Démarrer\n",
                 encoding="utf-8"
             )
             entries = scan_game_texts(root, source_language="DE")
