@@ -9,6 +9,7 @@ import os
 import re
 import sqlite3
 import threading
+import time
 import urllib.request
 from pathlib import Path
 
@@ -95,9 +96,14 @@ def install_english_turkish_model(progress=None) -> None:
         with urllib.request.urlopen(request, timeout=90) as response:
             resumed = bool(existing and getattr(response, "status", 200) == 206)
             downloaded = existing if resumed else 0
-            total = downloaded + int(response.headers.get("Content-Length") or 0)
+            # The model size is pinned and independently verified below. Using it here
+            # also keeps the progress display correct for HTTP Range responses.
+            total = MODEL_FILE_SIZE
             mode = "ab" if resumed else "wb"
-            last_reported = downloaded
+            last_reported_bytes = downloaded
+            last_reported_at = time.monotonic()
+            if progress:
+                progress(downloaded, total, 0.0, 0)
             with partial.open(mode) as output:
                 while True:
                     chunk = response.read(1024 * 1024)
@@ -105,9 +111,15 @@ def install_english_turkish_model(progress=None) -> None:
                         break
                     output.write(chunk)
                     downloaded += len(chunk)
-                    if progress and (downloaded - last_reported >= 16 * 1024 * 1024 or (total and downloaded >= total)):
-                        progress(downloaded, total or MODEL_SIZE_HINT)
-                        last_reported = downloaded
+                    now = time.monotonic()
+                    elapsed = now - last_reported_at
+                    if progress and (elapsed >= 0.5 or downloaded >= total):
+                        speed = (downloaded - last_reported_bytes) / elapsed if elapsed > 0 else 0.0
+                        remaining = max(0, total - downloaded)
+                        eta = int(remaining / speed) if speed > 0 else 0
+                        progress(downloaded, total, speed, eta)
+                        last_reported_bytes = downloaded
+                        last_reported_at = now
                 output.flush()
                 os.fsync(output.fileno())
         if downloaded != MODEL_FILE_SIZE or partial.stat().st_size != MODEL_FILE_SIZE:
@@ -120,7 +132,7 @@ def install_english_turkish_model(progress=None) -> None:
             raise LocalTranslationError("Hy-MT2 SHA-256 doğrulamasından geçmedi. Güvenlik için dosya kullanılmadı.")
         os.replace(partial, MODEL_PATH)
         if progress:
-            progress(downloaded, MODEL_FILE_SIZE)
+            progress(downloaded, MODEL_FILE_SIZE, 0.0, 0)
     except LocalTranslationError:
         partial.unlink(missing_ok=True)
         raise
