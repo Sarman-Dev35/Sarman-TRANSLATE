@@ -362,28 +362,30 @@ def set_glossary_term(source: str, target: str) -> None:
         raise ValueError("Kaynak terim ve Türkçe karşılığı boş olamaz.")
     path = APP_DATA / "glossary.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        custom = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if not isinstance(custom, dict):
+    with _GLOSSARY_LOCK:
+        try:
+            custom = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+            if not isinstance(custom, dict):
+                custom = {}
+        except (OSError, ValueError):
             custom = {}
-    except (OSError, ValueError):
-        custom = {}
-    custom[source] = target
-    temp = path.with_suffix(".tmp")
-    temp.write_text(json.dumps(custom, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp.replace(path)
+        custom[source] = target
+        temp = path.with_suffix(".tmp")
+        temp.write_text(json.dumps(custom, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp.replace(path)
 
 
 def delete_glossary_term(source: str) -> None:
     path = APP_DATA / "glossary.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        custom = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if not isinstance(custom, dict):
-            custom = {}
-        custom[source] = None
-        temp = path.with_suffix(".tmp")
-        temp.write_text(json.dumps(custom, ensure_ascii=False, indent=2), encoding="utf-8")
-        temp.replace(path)
-    except (OSError, ValueError):
-        return
+    with _GLOSSARY_LOCK:
+        try:
+            custom = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+            if not isinstance(custom, dict):
+                custom = {}
+            custom[source] = None
+            temp = path.with_suffix(".tmp")
+            temp.write_text(json.dumps(custom, ensure_ascii=False, indent=2), encoding="utf-8")
+            temp.replace(path)
+        except (OSError, ValueError):
+            return
