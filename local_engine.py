@@ -131,9 +131,9 @@ def translate_text(text: str) -> str:
         # Protect approved game terminology first so the model cannot mistranslate it.
         glossary = sorted(_glossary_terms().items(), key=lambda item: len(item[0]), reverse=True)
         for source_term, target_term in glossary:
-            if re.search(r"(?<!\\w)" + re.escape(source_term) + r"(?!\\w)", text, re.IGNORECASE):
+            if re.search(r"(?<!\w)" + re.escape(source_term) + r"(?!\w)", text, re.IGNORECASE):
                 marker = f" SARMANTERM{len(tokens):04d}X "
-                text = re.sub(r"(?<!\\w)" + re.escape(source_term) + r"(?!\\w)", lambda _m, v=marker: v, text, flags=re.IGNORECASE)
+                text = re.sub(r"(?<!\w)" + re.escape(source_term) + r"(?!\w)", lambda _m, v=marker: v, text, flags=re.IGNORECASE)
                 tokens.append((marker, target_term))
         def protect(match):
             token = f" SARMANPH{len(tokens):04d}X "
