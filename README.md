@@ -50,6 +50,12 @@ Kota akışını gerçek API kotasını tüketmeden denemek için Gemini API pen
 
 Yama paketi yalnızca UTF-8 JSON/CSV/TXT/INI metin dosyalarını kabul eder. Paket dosyalarını oyuna kopyalamak, oyunun yeni dosya yolunu otomatik olarak yükleyeceğini garanti etmez. İlk denemeyi gerçek oyun yerine test kopyasında yap.
 
+## Motor algılama ve uyumluluk raporu
+
+Çeviri Atölyesi artık oyun klasörünü salt okunur biçimde inceleyerek GameMaker, Unity, Unreal Engine, Godot, Ren'Py ve RPG Maker için motor ipuçlarını ve desteklenen metin dosyalarının sayısını gösterir. Bu bir uyumluluk garantisi değildir; özel ikili biçimleri otomatik açmaz. Motorlara göre gerçek destek sınırları, araştırma bağlantıları ve güvenli adaptör tasarımı için [`docs/ENGINE_SUPPORT.md`](docs/ENGINE_SUPPORT.md) dosyasına bak.
+
+Dışa aktarma sırasında UTF-8 BOM, JSON girintisi/ASCII kaçış tercihi ve son satır sonu korunmaya çalışılır. CSV/TSV için ayraç, tırnaklama ve satır sonu kaynağa göre algılanır. Bu koruma oyun motorunun dosyayı kabul edeceği anlamına gelmez; her oyunda kopya üzerinde doğrulama gerekir.
+
 ## Yama paketi biçimi
 
 ZIP kökünde `sarman-patch.json` bulunmalıdır:
