@@ -36,8 +36,8 @@ class LocalEngineTests(unittest.TestCase):
             def __call__(self, prompt, **kwargs):
                 return {"choices": [{"text": "Çevrildi"}]}
 
-        source = "First line\\r\\nSecond line\\n\\nFourth line\\rLast line"
-        expected = "Çevrildi\\r\\nÇevrildi\\n\\nÇevrildi\\rÇevrildi"
+        source = "First line\r\nSecond line\n\nFourth line\rLast line"
+        expected = "Çevrildi\r\nÇevrildi\n\nÇevrildi\rÇevrildi"
         with tempfile.TemporaryDirectory() as tmp, patch.object(local_engine, "APP_DATA", Path(tmp)):
             with patch.object(local_engine, "_get_model", return_value=FakeModel()), patch.object(
                 local_engine, "_cache_get", return_value=None
