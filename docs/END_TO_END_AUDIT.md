@@ -23,8 +23,7 @@ Denetim tarihi: 2026-11-07
 - Windows runner üzerinde PySide6 masaüstü arayüzü açılış smoke testi.
 - Windows keyring backend kontrolü.
 
-Son başarılı Windows test koşusu (7 Kasım 2026): **16 test geçti**, UI smoke test başarılı.  
-Daha sonraki son commit için test koşusu ayrıca takip edilmektedir; bu denetim belgesi EXE build'in başarılı olduğunu iddia etmez.
+Son başarılı Windows test koşusu (7 Kasım 2026, commit 9d3a6ac9): **17 test geçti**, UI smoke test başarılı. Bu denetim belgesi EXE build'in başarılı olduğunu iddia etmez.
 
 ## Henüz doğrulanmamış / tamamlanmamış noktalar
 
