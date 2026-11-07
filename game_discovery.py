@@ -192,11 +192,14 @@ def _scan_user_game_folders(extra_roots: Iterable[str] = ()) -> list[Game]:
     roots = [Path("D:/Games"), Path("D:/Oyunlar"), Path.home() / "Games", Path.home() / "Oyunlar"] + [Path(p).expanduser() for p in extra_roots]
     ignored = {"common files", "windowsapps", "windows", "microsoft", "nvidia corporation", "python", "nodejs"}
     excluded = ("unins", "uninstall", "setup", "redist", "crashreport", "crashhandler", "updater")
+    custom_set = {os.path.normcase(os.path.abspath(str(Path(p).expanduser()))) for p in extra_roots}
     for root in roots:
         if not root.is_dir():
             continue
         try:
             folders = [p for p in root.iterdir() if p.is_dir() and p.name.casefold() not in ignored]
+            if os.path.normcase(os.path.abspath(str(root))) in custom_set:
+                folders.insert(0, root)
         except OSError:
             continue
         for folder in folders:
