@@ -2,7 +2,7 @@ name: Translation MVP Tests
 
 on:
   push:
-    branches: [main, feature/complete-translation-mvp, feature/format-preservation-engine-readiness, feature/local-translation-engine-patch-management, feature/model-management-and-patch-controls]
+    branches: [main, feature/complete-translation-mvp, feature/format-preservation-engine-readiness, feature/local-translation-engine-patch-management, feature/model-management-and-patch-controls, feature/signed-publisher-download-progress]
     paths:
       - '**.py'
       - 'requirements.txt'
