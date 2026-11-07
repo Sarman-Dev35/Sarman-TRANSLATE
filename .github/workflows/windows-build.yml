@@ -22,6 +22,17 @@ jobs:
           pip install -r requirements.txt
       - name: Build executable
         run: pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --version-file version_info.txt --collect-all PySide6 --collect-all keyring --copy-metadata keyring main.py
+      - name: Launch packaged Windows app smoke test
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "dist\Sarman TRANSLATE\Sarman TRANSLATE.exe"
+          $process = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 8
+          $process.Refresh()
+          if ($process.HasExited) {
+            throw "Packaged Sarman TRANSLATE exited during startup."
+          }
+          Stop-Process -Id $process.Id -Force
       - name: Check whether signing secrets are configured
         id: signing_config
         shell: pwsh
