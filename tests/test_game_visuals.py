@@ -33,6 +33,8 @@ class GameVisualsTests(unittest.TestCase):
         style = theme_stylesheet("#f04459", "#397ee8")
         self.assertIn("#f04459", style)
         self.assertIn("#397ee8", style)
+        self.assertIn("#44f04459", style)
+        self.assertNotIn("#f0445930", style)
 
 if __name__ == "__main__":
     unittest.main()
