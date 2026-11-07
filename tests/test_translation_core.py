@@ -15,6 +15,16 @@ from translation_core import (
 
 
 class TranslationCoreTests(unittest.TestCase):
+    def test_text_scan_prunes_binary_asset_directories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Localization").mkdir()
+            (root / "Binaries").mkdir()
+            (root / "Localization" / "strings.json").write_text('{"hello":"Hello"}', encoding="utf-8")
+            (root / "Binaries" / "noise.json").write_text('{"noise":"Do not translate"}', encoding="utf-8")
+            entries = scan_game_texts(root)
+            self.assertEqual([entry.source for entry in entries], ["Hello"])
+
     def test_json_extracts_strings_and_skips_ids(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
