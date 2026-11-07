@@ -44,9 +44,9 @@ Gemini kotası Google Cloud projesine ve modele göre değişir. Aynı projede y
 
 ## Desteklenen dosya biçimleri ve sınırlar
 
-Şu an çıkarma ve dışa aktarma için doğrulanmış biçimler: **JSON, CSV, TXT, INI**. Kütüphanedeki TR/EN/DE gibi etiketler oyun klasöründeki dil dosyası/klasörü ipuçlarıdır; oyunun bu dili ayarlardan etkinleştirebildiğini garanti etmez. `Sarman yaması` sütunu ise yalnızca Sarman TRANSLATE tarafından yüklenmiş ve kaydı bulunan yamaları gösterir. Diğer dosyalar (XML, RESX, INI, PO, Unity/Unreal paketleri, özel arşivler, ikili varlıklar) bu sürümde otomatik değiştirilmez. Oyun motoruna özgü dil kayıt/etkinleştirme adımları ayrı adaptör gerektirir.
+Şu an çıkarma ve dışa aktarma için doğrulanmış biçimler: **JSON, CSV, TXT, INI**. Kütüphanedeki TR/EN/DE gibi etiketler oyun klasöründeki dil dosyası/klasörü ipuçlarıdır; oyunun bu dili ayarlardan etkinleştirebildiğini garanti etmez. `Sarman yaması` sütunu ise yalnızca Sarman TRANSLATE tarafından yüklenmiş ve kaydı bulunan yamaları gösterir. Diğer dosyalar (XML, RESX, PO, Unity/Unreal paketleri, özel arşivler, ikili varlıklar) bu sürümde otomatik değiştirilmez. Oyun motoruna özgü dil kayıt/etkinleştirme adımları ayrı adaptör gerektirir.
 
-Yama paketi yalnızca UTF-8 JSON/CSV/TXT dosyalarını kabul eder. Paket dosyalarını oyuna kopyalamak, oyunun yeni dosya yolunu otomatik olarak yükleyeceğini garanti etmez. İlk denemeyi gerçek oyun yerine test kopyasında yap.
+Yama paketi yalnızca UTF-8 JSON/CSV/TXT/INI metin dosyalarını kabul eder. Paket dosyalarını oyuna kopyalamak, oyunun yeni dosya yolunu otomatik olarak yükleyeceğini garanti etmez. İlk denemeyi gerçek oyun yerine test kopyasında yap.
 
 ## Yama paketi biçimi
 
@@ -68,7 +68,7 @@ ZIP kökünde `sarman-patch.json` bulunmalıdır:
 
 - `source`: ZIP içindeki UTF-8 metin dosyası.
 - `target`: oyun klasörüne göre göreli hedef.
-- Yalnızca `.json`, `.csv`, `.txt` hedefleri kabul edilir.
+- Yalnızca `.json`, `.csv`, `.txt`, `.ini` hedefleri kabul edilir.
 - Mutlak yollar, `..`, ADS/drive yolları, sembolik bağlantılar, şifreli ZIP girdileri ve aşırı büyük paketler reddedilir.
 - Kurulum yalnızca kullanıcı onayıyla yapılır; geri alma için her hedefin önceki durumu yedeklenir.
 
