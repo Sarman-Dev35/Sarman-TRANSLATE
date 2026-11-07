@@ -148,7 +148,7 @@ class PatchManagerTests(unittest.TestCase):
             target = game / "lang.json"
             target.write_text("original", encoding="utf-8")
             archive = root / "patch.zip"
-            manifest = {"name": "Demo TR", "version": "1", "files": [{"source": "files/lang.json", "target": "lang.json"}]}
+            manifest = {"name": "Demo TR", "version": "1", "language": "tr", "files": [{"source": "files/lang.json", "target": "lang.json"}]}
             with zipfile.ZipFile(archive, "w") as zf:
                 zf.writestr("sarman-patch.json", json.dumps(manifest))
                 zf.writestr("files/lang.json", "translated")
