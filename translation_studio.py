@@ -106,7 +106,7 @@ class TextScanWorker(QThread):
 
     def run(self):
         try:
-            self.completed.emit(scan_game_texts(self.game_dir))
+            self.completed.emit(scan_game_texts(self.game_dir, source_language=self.source_language))
         except Exception as exc:
             self.failed.emit(str(exc))
 
