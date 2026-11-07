@@ -36,20 +36,22 @@ def _is_translatable(value: str) -> bool:
     value = value.strip()
     if len(value) < 2 or not any(ch.isalpha() for ch in value):
         return False
-    if value.startswith(("http://", "https://", "www.")):
+    if value.startswith(("http://", "https://", "www.", "GUID:", "0x")):
         return False
-    if value.startswith(("GUID:", "0x", "http://", "https://")):
+    if len(value) > 2 and value[1] == ":" and value[2] in ("/", chr(92)):
         return False
-    if re.match(r"^[A-Za-z]:[\\\\/]", value) or value.startswith(("./", "../", "/")):
+    if value.startswith(("./", "../", "/")):
         return False
     if value.casefold() in {"true", "false", "yes", "no", "on", "off", "enabled", "disabled", "null", "none"}:
         return False
-    if re.fullmatch(r"[-+]?\\d+(?:\\.\\d+)?", value):
+    try:
+        float(value)
         return False
-    if re.search(r"\\.(?:exe|dll|pak|png|jpe?g|asset|dat|bin)$", value, re.IGNORECASE):
+    except ValueError:
+        pass
+    if Path(value).suffix.casefold() in {".exe", ".dll", ".pak", ".png", ".jpg", ".jpeg", ".asset", ".dat", ".bin"}:
         return False
     return True
-
 
 def _entry(file: Path, root: Path, locator: str, value: str) -> TextEntry | None:
     leaf = locator.replace("[", ".").replace("]", "").split(".")[-1].casefold()
