@@ -58,12 +58,18 @@ def _cache_path() -> Path:
     return APP_DATA / "translation-memory.sqlite3"
 
 
+def _cache_key(source: str) -> str:
+    import json
+    glossary = json.dumps(_glossary_terms(), ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256((source + "\\0" + glossary).encode("utf-8")).hexdigest()
+
+
 def _cache_get(source: str) -> str | None:
     path = _cache_path()
     if not path.exists():
         return None
     with sqlite3.connect(path, timeout=5) as db:
-        row = db.execute("SELECT translated FROM memory WHERE source_hash=?", (hashlib.sha256(source.encode("utf-8")).hexdigest(),)).fetchone()
+        row = db.execute("SELECT translated FROM memory WHERE source_hash=?", (_cache_key(source),)).fetchone()
         return row[0] if row else None
 
 
