@@ -314,7 +314,9 @@ class MainWindow(QMainWindow):
     def save_custom_roots(self):
         path = self._settings_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"custom_game_roots": self.custom_roots}, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps({"custom_game_roots": self.custom_roots}, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temporary, path)
 
     def add_game_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Oyun kütüphanesi klasörünü seç")
