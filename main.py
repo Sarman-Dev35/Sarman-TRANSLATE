@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import sys
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+import os
 
 from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QFont
@@ -19,6 +23,36 @@ ACCENT = "#e58a43"
 
 
 from game_discovery import Game, discover_games
+
+
+def install_exception_logging():
+    log_dir = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Sarman" / "TRANSLATE" / "logs"
+    logger = logging.getLogger("sarman_translate")
+    logger.setLevel(logging.ERROR)
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(
+            log_dir / "application.log", maxBytes=2 * 1024 * 1024,
+            backupCount=3, encoding="utf-8"
+        )
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        logger.addHandler(handler)
+    except OSError:
+        logging.basicConfig(level=logging.ERROR)
+
+    def handle_exception(exc_type, exc_value, traceback):
+        logger.critical("Beklenmeyen uygulama hatası", exc_info=(exc_type, exc_value, traceback))
+        if QApplication.instance():
+            QMessageBox.critical(
+                None, APP_NAME,
+                "Beklenmeyen bir hata oluştu. Ayrıntılar yerel uygulama günlüğüne kaydedildi.\n\n"
+                + str(log_dir / "application.log")
+            )
+        else:
+            sys.__excepthook__(exc_type, exc_value, traceback)
+
+    sys.excepthook = handle_exception
+
 
 class ScanWorker(QThread):
     completed = Signal(list)
@@ -441,8 +475,10 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    install_exception_logging()
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
+    app.setApplicationVersion("0.1.0")
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
