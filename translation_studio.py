@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from translation_core import TextEntry, scan_game_texts, load_workspace, save_workspace, build_translated_files, create_translation_patch, validate_translation
-from local_engine import translate_text, model_status, install_english_turkish_model, LocalTranslationError, glossary_items, set_glossary_term, delete_glossary_term
+from local_engine import translate_text, model_status, install_english_turkish_model, uninstall_english_turkish_model, LocalTranslationError, glossary_items, set_glossary_term, delete_glossary_term
 
 
 class GlossaryDialog(QDialog):
@@ -204,7 +204,10 @@ class TranslationStudio(QDialog):
         self.glossary_btn.clicked.connect(self.manage_glossary)
         self.model_btn = QPushButton("Çeviri modelini indir · 1,13 GB")
         self.model_btn.clicked.connect(self.install_model)
-        for button in (self.scan_btn, self.translate_btn, self.model_btn, self.glossary_btn, self.export_btn):
+        self.remove_model_btn = QPushButton("Modeli cihazdan kaldır")
+        self.remove_model_btn.clicked.connect(self.remove_model)
+        self.remove_model_btn.setVisible(False)
+        for button in (self.scan_btn, self.translate_btn, self.model_btn, self.remove_model_btn, self.glossary_btn, self.export_btn):
             actions.addWidget(button)
         root.addLayout(actions)
         self.model_status_label = QLabel("")
@@ -326,8 +329,10 @@ class TranslationStudio(QDialog):
     def refresh_model_status(self):
         info = model_status()
         self.model_status_label.setText(info["message"] + "  ·  İlk kurulum internet gerektirir; sonrasında çevrimdışı çalışır.")
-        self.model_btn.setVisible(not info["installed"])
-        self.model_btn.setEnabled(not info["installed"])
+        self.model_btn.setVisible(not info["installed"] and not info.get("present", False))
+        self.model_btn.setEnabled(not info["installed"] and not info.get("present", False))
+        self.remove_model_btn.setVisible(info.get("present", False))
+        self.remove_model_btn.setEnabled(info.get("present", False) and not (self.worker and self.worker.isRunning()))
         self.translate_btn.setEnabled(info["installed"] and bool(self.entries))
 
     def install_model(self):
@@ -349,6 +354,29 @@ class TranslationStudio(QDialog):
     def _model_installed(self):
         self.status.setText("Hy-MT2 hazır. Artık internet olmadan çeviri yapabilirsin.")
         self.refresh_model_status()
+
+    def remove_model(self):
+        if self.worker and self.worker.isRunning():
+            QMessageBox.information(self, "Çeviri sürüyor", "Model kullanımdayken kaldırılamaz. Çevirinin tamamlanmasını bekle.")
+            return
+        info = model_status()
+        if not info.get("present", False):
+            self.refresh_model_status()
+            return
+        answer = QMessageBox.question(
+            self, "Çeviri modeli kaldırılsın mı?",
+            "Hy-MT2 model dosyası uygulamanın .exe dosyasının bulunduğu klasörden silinecek. "
+            "Terim sözlüğün, çeviri hafızan ve oyun çalışma kayıtların korunacak. Devam edilsin mi?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            removed = uninstall_english_turkish_model()
+            self.status.setText("Çeviri modeli cihazdan kaldırıldı." if removed else "Silinecek model dosyası bulunamadı.")
+            self.refresh_model_status()
+        except LocalTranslationError as exc:
+            QMessageBox.warning(self, "Model kaldırılamadı", str(exc))
 
     def _model_install_failed(self, message):
         self.status.setText("Model kurulumu başarısız.")
@@ -405,7 +433,7 @@ class TranslationStudio(QDialog):
         self.status.setText("Yapay zekâ çevirisi tamamlandı. Terimleri ve kelime oyunlarını gözden geçir.")
 
     def _set_busy(self, busy):
-        for button in (self.scan_btn, self.translate_btn, self.export_btn, self.model_btn, self.glossary_btn):
+        for button in (self.scan_btn, self.translate_btn, self.export_btn, self.model_btn, self.remove_model_btn, self.glossary_btn):
             button.setEnabled(not busy)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers if busy else (QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed))
 
