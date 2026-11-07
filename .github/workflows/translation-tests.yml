@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   tests:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
@@ -18,32 +18,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install Qt system libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 libx11-xcb1 libfontconfig1 libfreetype6
       - name: Install runtime UI dependencies
         run: python -m pip install "PySide6>=6.7,<7" "keyring>=25.2,<27"
       - name: Compile Python modules
         run: python -m compileall -q .
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
-      - name: Desktop UI smoke test
+      - name: Windows desktop UI smoke test
         run: |
-          python - <<'PY'
-          from PySide6.QtWidgets import QApplication
-          from tempfile import TemporaryDirectory
-          from main import MainWindow
-          from game_discovery import Game
-          from translation_studio import TranslationStudio
-          app = QApplication([])
-          window = MainWindow()
-          assert window.pages.count() == 2
-          assert window.studio_btn.isEnabled() is False
-          with TemporaryDirectory() as game_dir:
-              studio = TranslationStudio(Game("Smoke Test", "Test", game_dir), window)
-              assert studio.table.columnCount() == 4
-              studio.close()
-          print("Main window and translation studio UI smoke tests passed.")
-          window.close()
-          PY
+          python -c "from PySide6.QtWidgets import QApplication; from main import MainWindow; from game_discovery import Game, discover_games; from translation_studio import TranslationStudio; import tempfile; app=QApplication([]); w=MainWindow(); assert w.pages.count()==2; assert not w.studio_btn.isEnabled(); d=tempfile.TemporaryDirectory(); studio=TranslationStudio(Game('Smoke Test','Test',d.name),w); assert studio.table.columnCount()==4; assert isinstance(discover_games([]),list); studio.close(); w.close(); d.cleanup(); print('Windows desktop and discovery smoke tests passed.')"
