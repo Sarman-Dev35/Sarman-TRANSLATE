@@ -121,7 +121,7 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
                                 walk(val, path + (str(index),))
                         elif isinstance(node, str):
                             # JSON Pointer escaping makes unusual keys reversible.
-                            locator = "/" + "/".join(part.replace("~", "~0").replace("/", "~1") for part in path)
+                            locator = "" if not path else "/" + "/".join(part.replace("~", "~0").replace("/", "~1") for part in path)
                             item = _entry(file, root, locator, node)
                             if item:
                                 found.append(item)
@@ -245,6 +245,11 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
             if suffix == ".json":
                 data = json.loads(raw)
                 for item in items:
+                    if item.locator == "":
+                        if data != item.source:
+                            raise StaleSourceError(f"{relative}: kaynak metin taramadan sonra değişmiş. Yeniden tara.")
+                        data = item.translated
+                        continue
                     if item.locator.startswith("/"):
                         keys = [
                             part.replace("~1", "/").replace("~0", "~")
