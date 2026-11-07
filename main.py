@@ -104,7 +104,7 @@ class MainWindow(QMainWindow):
         version = QLabel("DESKTOP  ·  ÖN SÜRÜM\nYerelleştirme araçları")
         version.setObjectName("sideFoot")
         side.addWidget(version)
-        shell.addWidget(side)
+        shell.addWidget(sidebar)
 
         content = QWidget()
         content.setObjectName("content")
