@@ -344,6 +344,7 @@ class MainWindow(QMainWindow):
             self.target_label.setText(f"{game.name}  ·  {game.path}")
             self.install_btn.setEnabled(bool(self.patch_path))
         else:
+            self.studio_btn.setEnabled(False)
             self.target_label.setText("Önce Oyun kütüphanesi bölümünden bir oyun seç.")
             self.install_btn.setEnabled(False)
 
