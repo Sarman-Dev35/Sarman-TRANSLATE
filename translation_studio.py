@@ -128,7 +128,14 @@ class TranslationStudio(QDialog):
         try:
             found = scan_game_texts(self.game.path)
             existing = {e.entry_id: e for e in self.entries}
-            self.entries = [existing.get(e.entry_id, e) for e in found]
+            merged = []
+            for entry in found:
+                previous = existing.get(entry.entry_id)
+                if previous and previous.source == entry.source:
+                    entry.translated = previous.translated
+                    entry.status = previous.status
+                merged.append(entry)
+            self.entries = merged
             self.render()
             self.save()
             self.status.setText(f"Tarama tamamlandı · {len(self.entries)} metin bulundu.")
