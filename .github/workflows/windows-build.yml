@@ -56,13 +56,13 @@ jobs:
           $certificatePath = Join-Path $env:RUNNER_TEMP "sarman-signing.pfx"
           try {
             [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:SIGN_CERT_B64))
-            $signtool = Get-ChildItem -Path "C:\\Program Files (x86)\\Windows Kits\\10\\bin" -Recurse -Filter signtool.exe |
+            $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
               Where-Object { $_.Directory.Name -eq "x64" } |
               Sort-Object FullName -Descending |
               Select-Object -First 1
             if (-not $signtool) { throw "Windows SDK signtool.exe was not found." }
 
-            $dist = Join-Path $PWD "dist\\Sarman TRANSLATE"
+            $dist = Join-Path $PWD "dist\Sarman TRANSLATE"
             $binaries = Get-ChildItem -Path $dist -Recurse -File |
               Where-Object { $_.Extension -in @(".exe", ".dll", ".pyd") }
             if (-not $binaries) { throw "No packaged PE binaries were found to sign." }
