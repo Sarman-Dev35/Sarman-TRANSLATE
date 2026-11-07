@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 from translation_core import TextEntry, scan_game_texts, load_workspace, save_workspace, build_translated_files, create_translation_patch, validate_translation
 from gemini_translator import translate_batch, GeminiTranslationError
 from quota_testing import quota_test_remaining
+from engine_support import inspect_game_engine
 
 SERVICE = "Sarman.TRANSLATE.Gemini"
 
@@ -123,6 +124,19 @@ class TranslationStudio(QDialog):
         title.setStyleSheet("font-size:20px;font-weight:800;color:#e58a43")
         root.addWidget(title)
         root.addWidget(QLabel("Desteklenen metin dosyaları salt okunur biçimde taranır. Orijinal oyun dosyaları çeviri sırasında değiştirilmez."))
+        self.engine_info = QLabel("Oyun motoru ve dosya uyumluluğu inceleniyor…")
+        self.engine_info.setWordWrap(True)
+        self.engine_info.setStyleSheet("color:#dca879;background:#211b16;border:1px solid #493323;border-radius:7px;padding:9px;")
+        root.addWidget(self.engine_info)
+        try:
+            report = inspect_game_engine(self.game.path)
+            self.engine_info.setText(
+                f"Motor: {report.engine} · Güven: {report.confidence} · {report.status}\\n"
+                f"Desteklenen metin dosyası: {report.supported_text_files} · Özel motor dosyası: {report.native_localization_files}\\n"
+                f"{report.guidance}"
+            )
+        except (OSError, ValueError) as exc:
+            self.engine_info.setText(f"Motor analizi yapılamadı: {exc}")
         actions = QHBoxLayout()
         self.scan_btn = QPushButton("Metinleri tara")
         self.scan_btn.clicked.connect(self.scan)

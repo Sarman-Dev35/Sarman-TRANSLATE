@@ -294,5 +294,32 @@ class PatchManagerTests(unittest.TestCase):
             output = build_translated_files(root, entries)["locale.csv"].decode("utf-8")
             self.assertIn("start,Başla,Démarrer", output)
 
+
+    def test_csv_semicolon_dialect_and_utf8_bom_are_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "locale.csv"
+            source.write_bytes(b"\xef\xbb\xbfkey;en;fr\r\nstart;\"Start, now\";\"Demarrer\"\r\n")
+            entries = scan_game_texts(root)
+            self.assertEqual(len(entries), 1)
+            entries[0].translated = "Şimdi Başla; lütfen"
+            output = build_translated_files(root, entries)["locale.csv"]
+            self.assertTrue(output.startswith(b"\xef\xbb\xbf"))
+            self.assertIn("start;\"Şimdi Başla; lütfen\";Demarrer\r\n".encode("utf-8"), output)
+            self.assertNotIn('start,"Şimdi'.encode("utf-8"), output)
+
+    def test_json_bom_indent_and_final_newline_are_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "strings.json"
+            source.write_bytes(b"\xef\xbb\xbf{\r\n    \"title\": \"Start\"\r\n}\r\n")
+            entries = scan_game_texts(root)
+            entries[0].translated = "Başla"
+            output = build_translated_files(root, entries)["strings.json"]
+            self.assertTrue(output.startswith(b"\xef\xbb\xbf"))
+            self.assertIn(b'    \"title\": \"Ba\xc5\x9fla\"', output)
+            self.assertTrue(output.endswith(b"\r\n"))
+            self.assertNotIn(b"\n", output.replace(b"\r\n", b""))
+
 if __name__ == "__main__":
     unittest.main()
