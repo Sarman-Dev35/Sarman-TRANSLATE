@@ -14,7 +14,7 @@ Sarman TRANSLATE, Windows için oyun yerelleştirme çalışma alanıdır. Kurul
 - Oyun adına, platforma ve yola göre arama.
 - JSON, CSV, TXT ve INI metin dosyalarını salt okunur tarama.
 - Çeviri Atölyesi: kaynak/çeviri tabloları, elle düzenleme, yerel çeviri kuyruğu ve yerel çalışma kaydı.
-- Qwen3 4B (Q4_K_M) bağlam duyarlı yerel yapay zekâ modeli; ilk kurulumdan sonra çevrimdışı kullanım.
+- Tencent Hy-MT2 1.8B (Q4_K_M, yaklaşık 1,13 GB) çeviri odaklı yerel model; ilk kurulumdan sonra çevrimdışı kullanım.
 - Tekrarlanan metinler için SQLite çeviri hafızası ve kullanıcı tarafından düzenlenebilir oyun terimleri sözlüğü.
 - Yer tutucu/biçim kodu ve satır sonu kalite kontrolü.
 - Desteklenen JSON/CSV/TXT/INI dosyalarından manifestli ZIP yama oluşturma.
@@ -39,7 +39,7 @@ Uygulama platform parolası istemez, istemci veritabanlarını kırmaz, lisans/D
 6. Çevirileri tabloda elle düzenleyip gözden geçir.
 7. **Yama ZIP'i oluştur** ile dışa aktar.
 
-Çeviri çalışma kayıtları `%LOCALAPPDATA%\\Sarman\\TRANSLATE\\workspaces`, tekrar kullanılan çeviriler SQLite hafızasında, özel terimler `glossary.json` dosyasında tutulur.\n\nYerel model ilk indirmede internet bağlantısı gerektirir. Model kurulduktan sonra çeviri API anahtarı, kota veya internet bağlantısı olmadan yapılır. Qwen3 4B modeli yaklaşık 2,5 GB indirilir ve yerel CPU üzerinde çalışır. Model, aynı dosyadaki yakın diyalogları bağlam olarak kullanır; oyun terimleri sözlüğü sabit karşılıkları korur. Kelime oyunları için daha doğal yerelleştirme hedeflenir ancak otomatik çeviri kusursuz değildir. Diyalogların son kontrolü kullanıcıya bırakılır.\n
+Çeviri çalışma kayıtları `%LOCALAPPDATA%\\Sarman\\TRANSLATE\\workspaces`, tekrar kullanılan çeviriler SQLite hafızasında, özel terimler `glossary.json` dosyasında tutulur.\n\nYerel model ilk indirmede internet bağlantısı gerektirir. Model kurulduktan sonra çeviri API anahtarı, kota veya internet bağlantısı olmadan yapılır. Tencent Hy-MT2 1.8B çeviri modeli yaklaşık 1,13 GB indirilir ve yerel CPU üzerinde çalışır. Bu sohbet modeli değildir; yalnızca çeviri üretir. Model, aynı dosyadaki yakın diyalogları bağlam olarak kullanır; oyun terimleri sözlüğü sabit karşılıkları korur. Kelime oyunları için daha doğal yerelleştirme hedeflenir ancak otomatik çeviri kusursuz değildir. Diyalogların son kontrolü kullanıcıya bırakılır.\n
 ## Desteklenen dosya biçimleri ve sınırlar
 
 Şu an çıkarma ve dışa aktarma için doğrulanmış biçimler: **JSON, CSV, TXT, INI**. Kütüphanedeki TR/EN/DE gibi etiketler oyun klasöründeki dil dosyası/klasörü ipuçlarıdır; oyunun bu dili ayarlardan etkinleştirebildiğini garanti etmez. `Sarman yaması` sütunu ise yalnızca Sarman TRANSLATE tarafından yüklenmiş ve kaydı bulunan yamaları gösterir. Diğer dosyalar (XML, RESX, PO, Unity/Unreal paketleri, özel arşivler, ikili varlıklar) bu sürümde otomatik değiştirilmez. Oyun motoruna özgü dil kayıt/etkinleştirme adımları ayrı adaptör gerektirir.
