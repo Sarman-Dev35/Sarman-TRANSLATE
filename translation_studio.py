@@ -36,20 +36,29 @@ class TranslateWorker(QThread):
     failed = Signal(str)
     completed = Signal()
 
-    def __init__(self, entries, indices):
+    def __init__(self, entries, indices, game_name):
         super().__init__()
         self.entries = entries
         self.indices = indices
+        self.game_name = game_name
 
     def run(self):
-        total = len(self.indices)
         groups = {}
         for index in self.indices:
-            groups.setdefault(self.entries[index].source, []).append(index)
+            entry = self.entries[index]
+            nearby = []
+            for other_index in range(max(0, index - 2), min(len(self.entries), index + 3)):
+                other = self.entries[other_index]
+                if other_index != index and other.file == entry.file and other.source.strip():
+                    nearby.append(other.source)
+            context = "\\n".join(nearby)
+            groups.setdefault((entry.source, context), []).append(index)
+
+        total = len(self.indices)
         done = 0
-        for source, indices in groups.items():
+        for (source, context), indices in groups.items():
             try:
-                result = translate_text(source)
+                result = translate_text(source, context=context, game_name=self.game_name)
                 for index in indices:
                     self.row_done.emit(index, result)
                     done += 1
@@ -64,10 +73,11 @@ class TranslateWorker(QThread):
 class ModelInstallWorker(QThread):
     completed = Signal()
     failed = Signal(str)
+    progress = Signal(int, int)
 
     def run(self):
         try:
-            install_english_turkish_model()
+            install_english_turkish_model(lambda done, total: self.progress.emit(done, total))
             self.completed.emit()
         except Exception as exc:
             self.failed.emit(str(exc))
@@ -125,7 +135,7 @@ class TranslationStudio(QDialog):
         self.export_btn.clicked.connect(self.export_patch)
         self.glossary_btn = QPushButton("Terim sözlüğü")
         self.glossary_btn.clicked.connect(self.manage_glossary)
-        self.model_btn = QPushButton("Yerel modeli kur")
+        self.model_btn = QPushButton("Yerel modeli indir · 2,5 GB")
         self.model_btn.clicked.connect(self.install_model)
         self.save_btn = QPushButton("Kaydet")
         self.save_btn.clicked.connect(self.save)
@@ -283,7 +293,13 @@ class TranslationStudio(QDialog):
         self.worker = ModelInstallWorker(self)
         self.worker.completed.connect(self._model_installed)
         self.worker.failed.connect(self._model_install_failed)
+        self.worker.progress.connect(self._model_download_progress)
         self.worker.start()
+
+    def _model_download_progress(self, downloaded, total):
+        if total > 0:
+            percent = min(100, int(downloaded * 100 / total))
+            self.model_status_label.setText(f"Model indiriliyor… %{percent}  ·  {downloaded // (1024*1024)} / {total // (1024*1024)} MB")
 
     def _model_installed(self):
         self.status.setText("Yerel model hazır. Artık internet olmadan çeviri yapabilirsin.")
@@ -297,7 +313,7 @@ class TranslationStudio(QDialog):
     def translate_pending(self):
         info = model_status()
         if not info["installed"]:
-            QMessageBox.information(self, "Yerel model", "Önce 'Yerel modeli kur' düğmesiyle İngilizce → Türkçe modelini indir.")
+            QMessageBox.information(self, "Yerel model", "Önce yaklaşık 2,5 GB boyutundaki Qwen3 4B yerel modelini indir.")
             return
         indices = [i for i, entry in enumerate(self.entries) if entry.status != "translated" or not entry.translated]
         if not indices:
@@ -305,7 +321,7 @@ class TranslationStudio(QDialog):
             return
         self._set_busy(True)
         self.progress.setRange(0, len(indices))
-        self.worker = TranslateWorker(self.entries, indices)
+        self.worker = TranslateWorker(self.entries, indices, self.game.name)
         self.worker.progress.connect(self._translation_progress)
         self.worker.row_done.connect(self._translation_done)
         self.worker.failed.connect(self._translation_failed)
@@ -341,7 +357,7 @@ class TranslationStudio(QDialog):
         self._set_busy(False)
         self.autosave_timer.stop()
         self.save()
-        self.status.setText("Çeviri kuyruğu tamamlandı. Çevirileri gözden geçir.")
+        self.status.setText("Yapay zekâ çevirisi tamamlandı. Terimleri ve kelime oyunlarını gözden geçir.")
 
     def _set_busy(self, busy):
         for button in (self.scan_btn, self.translate_btn, self.export_btn, self.model_btn, self.glossary_btn):
