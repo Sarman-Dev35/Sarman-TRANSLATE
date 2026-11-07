@@ -12,7 +12,7 @@ APP_DATA = Path(__import__("os").environ.get("LOCALAPPDATA", Path.home())) / "Sa
 MODEL_SOURCE = "en"
 MODEL_TARGET = "tr"
 _LOCK = threading.RLock()
-_TOKEN_RE = re.compile(r"\\{[^{}]+\\}|\\$\\{[^{}]+\\}|\\$[A-Za-z_][A-Za-z0-9_]*|%(?:\\d+\\$)?[-+#0 ]*(?:\\d+|\\*)?(?:\\.(?:\\d+|\\*))?[a-zA-Z%]|\\[[A-Za-z0-9_.:-]+\\]|<[^>]+>|\\\\[nrt]|\\\\u[0-9a-fA-F]{4}")
+_TOKEN_RE = re.compile(r"\{[^{}]+\}|\$\{[^{}]+\}|\$[A-Za-z_][A-Za-z0-9_]*|%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[a-zA-Z%]|\[[A-Za-z0-9_.:-]+\]|<[^>]+>|\\[nrt]|\\u[0-9a-fA-F]{4}")
 
 
 class LocalTranslationError(RuntimeError):
