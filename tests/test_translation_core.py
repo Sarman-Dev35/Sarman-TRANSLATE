@@ -81,7 +81,7 @@ class TranslationCoreTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = root / "strings.csv"
-            original = "key,en,fr\\nstart,Start,Demarrer\\n"
+            original = chr(10).join(("key,en,fr", "start,Start,Demarrer", ""))
             source.write_text(original, encoding="utf-8")
             entries = scan_game_texts(root)
             self.assertEqual([entry.source for entry in entries], ["Start"])
