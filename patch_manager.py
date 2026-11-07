@@ -175,7 +175,20 @@ def _restore_state(root: Path, state_dir: Path, state: dict, strict: bool = True
         raise PatchError("Yedek kaydı bozuk.")
     validated = []
     for entry in entries:
-        target = Path(entry.get("target", "")).resolve()
+        raw_target = Path(entry.get("target", ""))
+        if not raw_target.is_absolute():
+            raise PatchError("Yedek kaydında mutlak hedef yolu bekleniyordu.")
+        probe = raw_target
+        try:
+            relative = raw_target.relative_to(root)
+        except ValueError as exc:
+            raise PatchError("Yedek kaydında oyun klasörü dışına çıkan hedef bulundu.") from exc
+        probe = root
+        for part in relative.parts:
+            probe = probe / part
+            if probe.is_symlink():
+                raise PatchError("Geri alma sırasında sembolik bağlantı hedefi engellendi.")
+        target = probe.resolve()
         if target == root or root not in target.parents:
             raise PatchError("Yedek kaydında oyun klasörü dışına çıkan hedef bulundu.")
         backup_name = entry.get("backup")
