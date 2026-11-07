@@ -416,7 +416,7 @@ class MainWindow(QMainWindow):
             self.scan_btn.setText("⟳   Yeniden tara")
         except Exception as exc:
             self.library_status.setText("Tarama sonuçları arayüze aktarılamadı.")
-            QMessageBox.warning(self, APP_NAME, f"Oyunlar bulundu ancak liste güncellenemedi:\\n{exc}")
+            QMessageBox.warning(self, APP_NAME, f"Oyunlar bulundu ancak liste güncellenemedi:\n{exc}")
 
     def scan_failed(self, message):
         worker = self.sender()
