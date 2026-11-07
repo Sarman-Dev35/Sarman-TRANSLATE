@@ -7,7 +7,7 @@ from pathlib import Path
 import os
 
 from PySide6.QtCore import Qt, QThread, Signal, QTimer
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QMessageBox, QPushButton, QProgressBar, QTableWidget,
@@ -22,6 +22,12 @@ ACCENT = "#e58a43"
 
 
 from game_discovery import Game, discover_games
+
+
+def asset_path(name: str) -> Path:
+    """Resolve bundled assets in both source runs and PyInstaller builds."""
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return base / "assets" / name
 
 
 def install_exception_logging():
@@ -57,8 +63,8 @@ class ScanWorker(QThread):
     completed = Signal(list)
     failed = Signal(str)
 
-    def __init__(self, extra_roots=None):
-        super().__init__()
+    def __init__(self, extra_roots=None, parent=None):
+        super().__init__(parent)
         self.extra_roots = extra_roots or []
 
     def run(self):
@@ -86,6 +92,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_NAME)
+        icon_file = asset_path("sarman-translate.ico")
+        if icon_file.is_file():
+            self.setWindowIcon(QIcon(str(icon_file)))
         self.resize(1180, 760)
         self.setMinimumSize(900, 620)
         self.games: list[Game] = []
@@ -110,12 +119,25 @@ class MainWindow(QMainWindow):
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(20, 25, 20, 20)
         side.setSpacing(12)
+        brand_row = QHBoxLayout()
+        brand_row.setSpacing(11)
+        brand_icon = QLabel()
+        brand_icon.setFixedSize(42, 42)
+        brand_file = asset_path("sarman-translate.ico")
+        if brand_file.is_file():
+            brand_icon.setPixmap(QIcon(str(brand_file)).pixmap(42, 42))
+        brand_row.addWidget(brand_icon)
+        brand_text = QVBoxLayout()
+        brand_text.setSpacing(1)
         brand = QLabel("SARMAN")
         brand.setObjectName("brand")
         brand2 = QLabel("TRANSLATE")
         brand2.setObjectName("brandSub")
-        side.addWidget(brand)
-        side.addWidget(brand2)
+        brand_text.addWidget(brand)
+        brand_text.addWidget(brand2)
+        brand_row.addLayout(brand_text)
+        brand_row.addStretch()
+        side.addLayout(brand_row)
         side.addSpacing(24)
         nav_title = QLabel("ÇALIŞMA ALANI")
         nav_title.setObjectName("eyebrow")
@@ -307,12 +329,23 @@ class MainWindow(QMainWindow):
         self.scan_btn.setEnabled(False)
         self.scan_btn.setText("Taranıyor…")
         self.library_status.setText("Oyun kütüphaneleri taranıyor…")
-        self.worker = ScanWorker()
-        self.worker.completed.connect(self.scan_finished)
-        self.worker.failed.connect(self.scan_failed)
-        self.worker.start()
+        worker = ScanWorker(parent=self)
+        self.worker = worker
+        worker.completed.connect(self.scan_finished)
+        worker.failed.connect(self.scan_failed)
+        worker.finished.connect(self._scan_thread_finished)
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+
+    def _scan_thread_finished(self):
+        worker = self.sender()
+        if worker is self.worker:
+            self.worker = None
 
     def scan_finished(self, games):
+        worker = self.sender()
+        if worker is not None and worker is not self.worker:
+            return
         self.studio_btn.setEnabled(False)
         self.install_btn.setEnabled(False)
         self.table.clearSelection()
@@ -325,6 +358,9 @@ class MainWindow(QMainWindow):
         self.scan_btn.setText("⟳   Yeniden tara")
 
     def scan_failed(self, message):
+        worker = self.sender()
+        if worker is not None and worker is not self.worker:
+            return
         self.library_status.setText("Tarama sırasında hata oluştu")
         QMessageBox.warning(self, APP_NAME, message)
         self.scan_btn.setEnabled(True)
@@ -463,6 +499,9 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setApplicationVersion("0.1.0")
+    icon_file = asset_path("sarman-translate.ico")
+    if icon_file.is_file():
+        app.setWindowIcon(QIcon(str(icon_file)))
     window = MainWindow()
     window.show()
     sys.exit(app.exec())
