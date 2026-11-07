@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 
 from translation_core import TextEntry, scan_game_texts, load_workspace, save_workspace, build_translated_files, create_translation_patch, validate_translation
 from gemini_translator import translate_batch, GeminiTranslationError
+from quota_testing import quota_test_remaining
 
 SERVICE = "Sarman.TRANSLATE.Gemini"
 
@@ -39,14 +40,18 @@ class TranslateWorker(QThread):
     failed = Signal(str)
     completed = Signal()
 
-    def __init__(self, entries, api_key, model, indices):
+    def __init__(self, entries, api_key, model, indices, simulate_quota=False):
         super().__init__()
         self.entries = entries
         self.api_key = api_key
         self.model = model
         self.indices = indices
+        self.simulate_quota = simulate_quota
 
     def run(self):
+        if self.simulate_quota:
+            self.paused.emit("TEST_QUOTA_SIMULATION")
+            return
         total = len(self.indices)
         completed = 0
         groups: dict[str, list[int]] = {}
@@ -245,7 +250,7 @@ class TranslationStudio(QDialog):
             return
         self._set_busy(True)
         self.progress.setRange(0, len(indices))
-        self.worker = TranslateWorker(self.entries, api_key, model, indices)
+        self.worker = TranslateWorker(self.entries, api_key, model, indices, simulate_quota=quota_test_remaining() > 0)
         self.worker.progress.connect(lambda n, total, text: (self.progress.setValue(n), self.status.setText(f"{n}/{total} çevrildi · {text}")))
         self.worker.row_done.connect(self._translation_done)
         self.worker.paused.connect(self._quota_paused)
@@ -262,8 +267,17 @@ class TranslationStudio(QDialog):
     def _quota_paused(self, message):
         self._set_busy(False)
         self.save()
+        if message == "TEST_QUOTA_SIMULATION":
+            self.status.setText("TEST MODU — Çeviri API isteği gönderilmeden duraklatıldı. Çalışma kaydedildi.")
+            QMessageBox.information(
+                self, "Kota duraklatma testi",
+                "Test başarılı: çeviri kuyruğu güvenli biçimde duraklatıldı ve çalışma kaydedildi. "
+                "Bu test Gemini API'ye istek göndermedi, gerçek kotanı tüketmedi. "
+                "Bekleme süresi sona erdiğinde 'Bekleyenleri çevir' düğmesiyle devam edebilirsin."
+            )
+            return
         self.status.setText("Kota nedeniyle duraklatıldı. Tamamlanan çeviriler kaydedildi.")
-        QMessageBox.warning(self, "Gemini kotası", "API kotası doldu. İlerleme kaydedildi; aynı Google Cloud projesinin kotası yenilendiğinde veya farklı bir projeye ait uygun anahtar eklediğinde bekleyenleri sürdürebilirsin.\n\n" + message)
+        QMessageBox.warning(self, "Gemini kotası", "API isteği kota sınırına takıldı. İlerleme kaydedildi. Google API erişimi tekrar kullanılabilir olduğunda veya farklı bir projeye ait uygun anahtar eklediğinde bekleyenleri sürdürebilirsin.\n\n" + message)
 
     def _translation_failed(self, message):
         self._set_busy(False)
