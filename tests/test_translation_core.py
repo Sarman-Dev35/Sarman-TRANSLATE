@@ -1,4 +1,6 @@
 import json
+import io
+import urllib.error
 import tempfile
 import unittest
 import zipfile
@@ -47,6 +49,23 @@ class TranslationCoreTests(unittest.TestCase):
             result = translate_batch("fake-key", "gemini-test", [("row1", "Hello {player}"), ("row2", "Load %s")])
         self.assertEqual(result["row1"], "Merhaba {player}")
         self.assertEqual(result["row2"], "Yükle %s")
+
+    def test_gemini_retries_transient_http_408(self):
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self):
+                payload = {"candidates": [{"content": {"parts": [{"text": json.dumps({
+                    "translations": [{"id": "retry-row", "text": "Merhaba"}]
+                })}]}}]}
+                return json.dumps(payload).encode("utf-8")
+        error = urllib.error.HTTPError(
+            "https://generativelanguage.googleapis.com", 408, "Request Timeout", {}, io.BytesIO(b"timeout")
+        )
+        with patch("gemini_translator.urllib.request.urlopen", side_effect=[error, Response()]) as request, patch("gemini_translator.time.sleep"):
+            result = translate_batch("fake-key", "gemini-test", [("retry-row", "Hello")])
+        self.assertEqual(result["retry-row"], "Merhaba")
+        self.assertEqual(request.call_count, 2)
 
     def test_gemini_batch_rejects_lost_placeholders(self):
         class Response:
