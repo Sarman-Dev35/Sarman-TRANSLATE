@@ -175,7 +175,9 @@ def _restore_state(root: Path, state_dir: Path, state: dict, strict: bool = True
         raise PatchError("Yedek kaydı bozuk.")
     validated = []
     for entry in entries:
-        raw_target = Path(entry.get("target", ""))
+        if not isinstance(entry, dict) or not isinstance(entry.get("target"), str):
+            raise PatchError("Yedek kaydında geçersiz dosya hedefi bulundu.")
+        raw_target = Path(entry["target"])
         if not raw_target.is_absolute():
             raise PatchError("Yedek kaydında mutlak hedef yolu bekleniyordu.")
         probe = raw_target
@@ -193,6 +195,8 @@ def _restore_state(root: Path, state_dir: Path, state: dict, strict: bool = True
             raise PatchError("Yedek kaydında oyun klasörü dışına çıkan hedef bulundu.")
         backup_name = entry.get("backup")
         backup_path = None
+        if backup_name is not None and not isinstance(backup_name, str):
+            raise PatchError("Yedek kaydında geçersiz yedek dosya adı.")
         if backup_name:
             if Path(backup_name).name != backup_name:
                 raise PatchError("Yedek kaydında geçersiz yedek dosya adı.")
@@ -219,6 +223,8 @@ def uninstall_latest(game_dir: str | Path) -> str:
         for state_path in base.glob("*/**/install.json"):
             try:
                 state = json.loads(state_path.read_text(encoding="utf-8"))
+                if not isinstance(state, dict):
+                    continue
                 if state.get("schema") == 1 and Path(state.get("game_dir", "")).resolve() == root:
                     states.append((state_path.stat().st_mtime, state_path, state))
             except (OSError, ValueError, TypeError):
@@ -243,6 +249,8 @@ def installed_patch_languages(game_dir: str | Path) -> set[str]:
         for state_path in base.glob("*/**/install.json"):
             try:
                 state = json.loads(state_path.read_text(encoding="utf-8"))
+                if not isinstance(state, dict):
+                    continue
                 if state.get("schema") != 1 or Path(state.get("game_dir", "")).resolve() != root:
                     continue
                 language = state.get("language")
