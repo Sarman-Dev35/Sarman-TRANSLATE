@@ -191,7 +191,7 @@ def uninstall_english_turkish_model() -> bool:
                     removed = True
             except OSError as exc:
                 raise LocalTranslationError(
-                    f"Model dosyası silinemedi: {path}\\nUygulamayı yazma izni olan bir klasörden çalıştırıp tekrar dene.\\n{exc}"
+                    f"Model dosyası silinemedi: {path}\nUygulamayı yazma izni olan bir klasörden çalıştırıp tekrar dene.\n{exc}"
                 ) from exc
         return removed
 
@@ -293,11 +293,11 @@ def translate_text(text: str, context: str = "", game_name: str = "") -> str:
     # Translate each logical line independently. A single model response for a
     # multiline JSON string may collapse or add line breaks; preserving the
     # original separators here makes that impossible and keeps CRLF/LF intact.
-    if re.search(r"\\r\\n|\\r|\\n", original_text):
-        parts = re.split(r"(\\r\\n|\\r|\\n)", original_text)
+    if re.search(r"\r\n|\r|\n", original_text):
+        parts = re.split(r"(\r\n|\r|\n)", original_text)
         translated_parts = []
         for part in parts:
-            if part in ("\\r\\n", "\\r", "\\n") or not part.strip():
+            if part in ("\r\n", "\r", "\n") or not part.strip():
                 translated_parts.append(part)
             else:
                 translated_parts.append(
