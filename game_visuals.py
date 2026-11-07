@@ -100,6 +100,7 @@ class GameArtService(QObject):
         self.requested = set()
         self.game_names = {}
         self.game_keys = {}
+        self.fallback_images = {}
 
     @staticmethod
     def cache_key(game):
@@ -142,7 +143,10 @@ class GameArtService(QObject):
 
         app_id = str(getattr(game, "app_id", "") or "").strip()
         if app_id.isdigit():
-            self._request_details(path, app_id)
+            self._request_details(
+                path, app_id,
+                f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{app_id}/header.jpg",
+            )
         else:
             self._request_search(path)
 
@@ -155,7 +159,9 @@ class GameArtService(QObject):
         url.setQuery(query)
         self._send(path, "search", url.toString())
 
-    def _request_details(self, path, app_id):
+    def _request_details(self, path, app_id, fallback_url=""):
+        if fallback_url.startswith("https://"):
+            self.fallback_images[path] = fallback_url
         url = QUrl("https://store.steampowered.com/api/appdetails")
         query = QUrlQuery()
         query.addQueryItem("appids", app_id)
@@ -175,6 +181,9 @@ class GameArtService(QObject):
         path, phase = self.pending.pop(reply, ("", ""))
         try:
             if reply.error():
+                fallback = self.fallback_images.get(path, "") if phase == "details" else ""
+                if fallback:
+                    self._send(path, "image", fallback)
                 return
             length = reply.header(QNetworkRequest.KnownHeaders.ContentLengthHeader)
             if length is not None and int(length) > MAX_ART_BYTES:
@@ -196,8 +205,9 @@ class GameArtService(QObject):
                         best, best_score = item, score
                 if best and (best_score >= 0.86 or " ".join(str(best.get("name", "")).casefold().split()) == wanted):
                     app_id = str(best.get("id", "")).strip()
+                    fallback = str(best.get("header_image") or "")
                     if app_id.isdigit():
-                        self._request_details(path, app_id)
+                        self._request_details(path, app_id, fallback)
                 return
 
             if phase == "details":
@@ -211,7 +221,7 @@ class GameArtService(QObject):
                 if screenshots:
                     image_url = str(screenshots[0].get("path_full") or "")
                 if not image_url:
-                    image_url = str(details.get("header_image") or "")
+                    image_url = str(details.get("header_image") or self.fallback_images.get(path, ""))
                 if image_url.startswith("https://"):
                     self._send(path, "image", image_url)
                 return
