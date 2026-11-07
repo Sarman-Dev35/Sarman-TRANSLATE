@@ -68,7 +68,7 @@ def theme_stylesheet(accent="#f06a3d",secondary="#a92f45",compact=False):
  QTableWidget{{background:#10151e;alternate-background-color:#141a24;border:1px solid #2b303c;border-radius:14px;padding:5px;selection-background-color:{selected_accent};gridline-color:transparent;}}
  QHeaderView::section{{background:#171d28;color:{accent};border:0;padding:12px 9px;font-size:10px;font-weight:900;letter-spacing:1px;}}
  QTableWidget::item{{padding:9px 8px;border-bottom:1px solid #242b37;}}
- QTableWidget::item:selected{{background:{accent}30;color:#fff;}}
+ QTableWidget::item:selected{{background:{selected_accent};color:#fff;}}
  QLabel#warning{{color:#f0bd91;background:#251a1b;border:1px solid {secondary};border-radius:10px;padding:12px;}}
  QComboBox{{background:#141923;border:1px solid #343b49;border-radius:{radius};padding:8px 10px;min-width:150px;}}
  QComboBox::drop-down{{border:0;width:25px;}}
@@ -109,12 +109,13 @@ class GameArtService(QObject):
    if not image.isNull():QTimer.singleShot(0,lambda p=path,i=image:self._emit(p,i));return
   appid=str(getattr(game,"app_id","") or "").strip()
   if appid.isdigit():self._download(path,f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg")
-  elif any(token in str(getattr(game,"platform","")).casefold() for token in ("epic","xbox","microsoft","özel oyun","windows oyun")):
+  else:
    url=QUrl("https://store.steampowered.com/api/storesearch/");q=QUrlQuery()
    q.addQueryItem("term",str(game.name)[:100]);q.addQueryItem("l","english");q.addQueryItem("cc","us");url.setQuery(q)
    self._send(path,"search",url.toString())
  def _send(self,path,phase,url):
   req=QNetworkRequest(QUrl(url));req.setRawHeader(b"User-Agent",b"Sarman-TRANSLATE/1.0")
+  req.setTransferTimeout(15000)
   reply=self.manager.get(req);self.pending[reply]=(path,phase);reply.finished.connect(lambda r=reply:self._finished(r))
  def _download(self,path,url):self._send(path,"image",url)
  def _finished(self,reply):
