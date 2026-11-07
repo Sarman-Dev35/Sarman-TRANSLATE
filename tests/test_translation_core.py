@@ -217,13 +217,13 @@ class PatchManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = root / "lang.ini"
-            source.write_bytes(b"start=Start\\r\\nexit=Exit\\r\\n")
+            source.write_bytes(b"start=Start\r\nexit=Exit\r\n")
             entries = scan_game_texts(root)
             for item in entries:
                 item.translated = {"Start": "Başla", "Exit": "Çıkış"}[item.source]
             output = build_translated_files(root, entries)["lang.ini"]
-            self.assertIn(b"start=Ba\xc5\x9fla\\r\\n", output)
-            self.assertNotIn(b"\\n", output.replace(b"\\r\\n", b""))
+            self.assertIn(b"start=Ba\xc5\x9fla\r\n", output)
+            self.assertNotIn(b"\n", output.replace(b"\r\n", b""))
 
     def test_json_keys_with_dots_slashes_and_brackets_round_trip(self):
         with tempfile.TemporaryDirectory() as tmp:
