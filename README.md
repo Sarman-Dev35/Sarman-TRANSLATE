@@ -34,8 +34,8 @@ Uygulama platform parolası istemez, istemci veritabanlarını kırmaz, lisans/D
 1. Oyun kütüphanesinde oyunu seç.
 2. **Çeviri Atölyesi** düğmesine bas.
 3. **Metinleri tara** ile desteklenen dosyaları keşfet.
-4. Ayarlar > Yerel model bölümünde kendi anahtarını ekle ve bağlantıyı test et.
-5. **Bekleyenleri çevir** ile sırayı çalıştır. Her tamamlanan satır yerel çalışma dosyasına kaydedilir.
+4. **Yerel modeli kur** ile İngilizce → Türkçe modelini bir kez indir.
+5. **Bekleyenleri çevir** ile çevrimdışı çeviriyi başlat. Terim sözlüğünden oyuna özel karşılıklar ekleyebilirsin.
 6. Çevirileri tabloda elle düzenleyip gözden geçir.
 7. **Yama ZIP'i oluştur** ile dışa aktar.
 
