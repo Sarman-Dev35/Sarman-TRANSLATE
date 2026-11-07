@@ -28,10 +28,18 @@ def _safe_relative(value: str) -> Path:
     posix = PurePosixPath(normalized)
     if posix.is_absolute() or not posix.parts or any(p in ("", ".", "..") for p in posix.parts):
         raise PatchError(f"Güvenli olmayan dosya yolu: {value}")
-    if any(":" in part for part in posix.parts) or normalized.startswith("//"):
+    reserved = {"CON", "PRN", "AUX", "NUL"} | {f"COM{i}" for i in range(1, 10)} | {f"LPT{i}" for i in range(1, 10)}
+    invalid_chars = set('<>:"|?*')
+    for part in posix.parts:
+        device_stem = part.split(".", 1)[0].upper()
+        if (
+            any(ord(char) < 32 or char in invalid_chars for char in part)
+            or device_stem in reserved
+            or part.endswith((" ", "."))
+        ):
+            raise PatchError(f"Windows için geçersiz dosya yolu: {value}")
+    if normalized.startswith("//"):
         raise PatchError(f"Güvenli olmayan dosya yolu: {value}")
-    if any(part.endswith((" ", ".")) for part in posix.parts):
-        raise PatchError(f"Windows için geçersiz dosya yolu: {value}")
     return Path(*posix.parts)
 
 
