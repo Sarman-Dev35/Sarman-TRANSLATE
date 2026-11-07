@@ -140,6 +140,18 @@ class PatchManagerTests(unittest.TestCase):
             with self.assertRaises(PatchError):
                 inspect_patch(archive)
 
+    def test_ignores_malformed_local_install_journal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            game = root / "Game"
+            game.mkdir()
+            journal = root / "appdata" / "backups" / "Game" / "broken" / "install.json"
+            journal.parent.mkdir(parents=True)
+            journal.write_text("[]", encoding="utf-8")
+            with patch.object(patch_manager, "APP_DATA", root / "appdata"):
+                with self.assertRaises(PatchError):
+                    uninstall_latest(game)
+
     def test_install_and_rollback_restore_original(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
