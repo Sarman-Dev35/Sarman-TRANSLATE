@@ -235,7 +235,7 @@ def uninstall_latest(game_dir: str | Path) -> str:
                     continue
                 if state.get("schema") == 1 and Path(state.get("game_dir", "")).resolve() == root:
                     states.append((state_path.stat().st_mtime, state_path, state))
-            except (OSError, ValueError, TypeError):
+            except (OSError, ValueError, TypeError, RuntimeError):
                 continue
     if not states:
         raise PatchError("Bu oyun için geri alınabilir bir Sarman yama kaydı bulunamadı.")
@@ -266,7 +266,7 @@ def installed_patch_languages(game_dir: str | Path) -> set[str]:
                     found.add(language.strip().casefold())
                 elif "türkçe" in str(state.get("name", "")).casefold() or "turkish" in str(state.get("name", "")).casefold():
                     found.add("tr")
-            except (OSError, ValueError, TypeError):
+            except (OSError, ValueError, TypeError, RuntimeError):
                 continue
     except OSError:
         return found
