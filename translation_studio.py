@@ -307,10 +307,10 @@ class TranslationStudio(QDialog):
         worker.start()
 
     def _scan_thread_finished(self):
-        worker = self.sender()
-        if worker is self.scan_worker:
-            self.scan_worker = None
-            self._scan_busy = False
+        # Do not inspect sender(): the QThread is scheduled for deleteLater
+        # on this same finished signal and its Python wrapper may already be invalid.
+        self.scan_worker = None
+        self._scan_busy = False
         self.scan_btn.setEnabled(not self._operation_busy and not (self.worker and self.worker.isRunning()))
         self.refresh_model_status()
 
@@ -563,10 +563,10 @@ class TranslationStudio(QDialog):
         self.status.setText("Yapay zekâ çevirisi tamamlandı. Terimleri ve kelime oyunlarını gözden geçir.")
 
     def _worker_thread_finished(self):
-        worker = self.sender()
-        if worker is self.worker:
-            self.worker = None
-            self._operation_busy = False
+        # The window allows only one model/translation worker at a time.
+        # Avoid dereferencing sender() after QThread.finished/deleteLater.
+        self.worker = None
+        self._operation_busy = False
         self.refresh_model_status()
 
     def _set_busy(self, busy):

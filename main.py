@@ -390,10 +390,11 @@ class MainWindow(QMainWindow):
         worker.start()
 
     def _scan_thread_finished(self):
-        worker = self.sender()
-        if worker is self.worker:
-            self.worker = None
-            self.scan_btn.setEnabled(True)
+        # QThread.finished may be followed by deleteLater before a queued slot
+        # safely inspects sender(). Never dereference the finishing QThread here:
+        # clear the single active-worker reference from this GUI-thread slot.
+        self.worker = None
+        self.scan_btn.setEnabled(True)
 
     def scan_finished(self, games):
         worker = self.sender()
