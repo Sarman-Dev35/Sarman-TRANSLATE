@@ -33,7 +33,7 @@ MODEL_SHA256 = "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699
 MODEL_FILE_SIZE = 1_133_080_448
 MODEL_SIZE_HINT = MODEL_FILE_SIZE
 # Cache invalidation for translation-quality and prompt changes.
-TRANSLATION_PIPELINE_VERSION = "2026-11-07.2"
+TRANSLATION_PIPELINE_VERSION = "2026-11-07.3"
 DOWNLOAD_CHUNK_SIZE = 4 * 1024 * 1024
 _LOCK = threading.RLock()
 _INFERENCE_LOCK = threading.Lock()
@@ -191,7 +191,7 @@ def uninstall_english_turkish_model() -> bool:
                     removed = True
             except OSError as exc:
                 raise LocalTranslationError(
-                    f"Model dosyası silinemedi: {path}\\nUygulamayı yazma izni olan bir klasörden çalıştırıp tekrar dene.\\n{exc}"
+                    f"Model dosyası silinemedi: {path}\nUygulamayı yazma izni olan bir klasörden çalıştırıp tekrar dene.\n{exc}"
                 ) from exc
         return removed
 
@@ -289,6 +289,28 @@ def translate_text(text: str, context: str = "", game_name: str = "") -> str:
     if cached is not None:
         if cached.strip() and not validate_translation(original_text, cached) and cached.casefold() != original_text.casefold():
             return cached
+
+    # Translate each logical line independently. A single model response for a
+    # multiline JSON string may collapse or add line breaks; preserving the
+    # original separators here makes that impossible and keeps CRLF/LF intact.
+    if re.search(r"\r\n|\r|\n", original_text):
+        parts = re.split(r"(\r\n|\r|\n)", original_text)
+        translated_parts = []
+        for part in parts:
+            if part in ("\r\n", "\r", "\n") or not part.strip():
+                translated_parts.append(part)
+            else:
+                translated_parts.append(
+                    translate_text(part, context=context, game_name=game_name)
+                )
+        result = "".join(translated_parts)
+        issues = validate_translation(original_text, result)
+        if issues:
+            raise LocalTranslationError(
+                "Çok satırlı metnin biçimi korunamadı: " + " ".join(issues)
+            )
+        _cache_put(original_text, result, context, game_name)
+        return result
 
     tokens: list[tuple[str, str]] = []
     glossary = sorted(_glossary_terms().items(), key=lambda item: len(item[0]), reverse=True)

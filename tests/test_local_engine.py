@@ -31,6 +31,19 @@ class LocalEngineTests(unittest.TestCase):
             self.assertEqual(fake.kwargs["temperature"], 0.7)
             self.assertEqual(fake.kwargs["top_k"], 20)
 
+    def test_multiline_translation_preserves_exact_line_breaks(self):
+        class FakeModel:
+            def __call__(self, prompt, **kwargs):
+                return {"choices": [{"text": "Çevrildi"}]}
+
+        source = "First line\r\nSecond line\n\nFourth line\rLast line"
+        expected = "Çevrildi\r\nÇevrildi\n\nÇevrildi\rÇevrildi"
+        with tempfile.TemporaryDirectory() as tmp, patch.object(local_engine, "APP_DATA", Path(tmp)):
+            with patch.object(local_engine, "_get_model", return_value=FakeModel()), patch.object(
+                local_engine, "_cache_get", return_value=None
+            ), patch.object(local_engine, "_cache_put"):
+                self.assertEqual(local_engine.translate_text(source), expected)
+
     def test_model_metadata_targets_compact_translation_model(self):
         self.assertEqual(local_engine.MODEL_NAME, "Hy-MT2-1.8B-Q4_K_M.gguf")
         self.assertIn("tencent/Hy-MT2-1.8B-GGUF", local_engine.MODEL_URL)
