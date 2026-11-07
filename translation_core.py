@@ -13,6 +13,7 @@ SUPPORTED = {".json", ".csv", ".txt", ".ini"}
 SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "binaries", "bin", "cache", "caches", "logs", "crashdumps"}
 MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_FILES = 5000
+MAX_ENTRIES = 30000
 PLACEHOLDER_RE = re.compile(
     r"\{[^{}]+\}|\$\{[^{}]+\}|\$[A-Za-z_][A-Za-z0-9_]*|%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[a-zA-Z%]|"
     r"\[[A-Za-z0-9_.:-]+\]|<[^>]+>|\\[nrt]|\\u[0-9a-fA-F]{4}"
@@ -122,6 +123,9 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
         except (ValueError, csv.Error, json.JSONDecodeError):
             continue
         entries.extend(found)
+        if len(entries) >= MAX_ENTRIES:
+            entries = entries[:MAX_ENTRIES]
+            break
     # Stable de-duplication by exact source+locator.
     unique = {}
     for item in entries:
