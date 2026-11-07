@@ -7,7 +7,7 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal, Qt, QTimer
 from game_visuals import palette_for_game, theme_stylesheet
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
+    QDialog, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QMessageBox, QFileDialog, QProgressBar, QLineEdit
 )
 
@@ -254,7 +254,6 @@ class TranslationStudio(QDialog):
         model_heading.setObjectName("eyebrow")
         model_layout.addWidget(model_heading)
         self.model_status_label = QLabel("")
-        self.model_status_label.setWordWrap(True)
         self.model_status_label.setWordWrap(True)
         self.model_status_label.setObjectName("muted")
         model_layout.addWidget(self.model_status_label)
