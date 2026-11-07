@@ -325,6 +325,9 @@ class TranslationStudio(QDialog):
             QMessageBox.information(self, "İşlem sürüyor", "Tarama veya çeviri işlemi tamamlanana kadar bu pencereyi kapatamazsın. Tamamlanan çeviriler otomatik kaydedilir.")
             event.ignore()
             return
+        if self.autosave_timer.isActive():
+            self.autosave_timer.stop()
+            self.save(silent=True)
         event.accept()
 
     def export_patch(self):
