@@ -6,7 +6,7 @@ import time
 import urllib.error
 import urllib.request
 
-from translation_core import validate_translation
+from translation_core import placeholder_signature, validate_translation
 
 API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -25,12 +25,7 @@ def translate_text(api_key: str, model: str, text: str, target_language: str = "
     model = model.removeprefix("models/")
     if not re.fullmatch(r"[A-Za-z0-9._-]+", model):
         raise GeminiTranslationError("Geçersiz Gemini model adı.")
-    protected = {
-        "placeholders": __import__("re").findall(
-            r"\{[^{}]+\}|\$\{[^{}]+\}|%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[a-zA-Z%]|\[[A-Za-z0-9_.:-]+\]|<[^>]+>|\\[nrt\\]",
-            text,
-        )
-    }
+    protected = {"placeholders": placeholder_signature(text)}
     prompt = (
         f"Translate the game text into {target_language}. Return ONLY the translated text, no quotes or explanations. "
         "Preserve every placeholder, variable, markup tag, escape sequence, punctuation token, and line break exactly. "
