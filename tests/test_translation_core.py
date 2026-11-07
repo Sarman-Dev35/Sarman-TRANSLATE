@@ -193,7 +193,7 @@ class PatchManagerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = root / "locale.csv"
-            source.write_text("key,en-US,fr-FR\\nstart,Start,Démarrer\\n", encoding="utf-8")
+            source.write_text("key,en-US,fr-FR\nstart,Start,Démarrer\n", encoding="utf-8")
             entries = scan_game_texts(root)
             self.assertEqual([item.source for item in entries], ["Start"])
             entries[0].translated = "Başla"
