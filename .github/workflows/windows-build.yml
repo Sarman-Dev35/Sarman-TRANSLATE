@@ -26,7 +26,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Build executable
-        run: pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --collect-all PySide6 --collect-all keyring main.py
+        run: pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --version-file version_info.txt --collect-all PySide6 --collect-all keyring main.py
       - name: Sign Windows executable with Authenticode
         if: ${{ env.SIGN_CERT_B64 != '' && env.SIGN_CERT_PASSWORD != '' }}
         shell: pwsh
