@@ -41,6 +41,8 @@ def _load_manifest(path: str | Path):
     try:
         with zipfile.ZipFile(archive_path) as zf:
             infos = zf.infolist()
+            if len({info.filename for info in infos}) != len(infos):
+                raise PatchError("ZIP içinde yinelenen dosya yolları var.")
             if len(infos) > MAX_FILES + 1:
                 raise PatchError("Yama paketi çok fazla dosya içeriyor.")
             manifest_infos = [info for info in infos if info.filename == "sarman-patch.json"]
@@ -125,7 +127,13 @@ def install_patch(archive: str | Path, game_dir: str | Path) -> dict:
     try:
         with zipfile.ZipFile(archive) as zf:
             for index, item in enumerate(manifest["files"]):
-                target = (root / _safe_relative(item["target"])).resolve()
+                relative_target = _safe_relative(item["target"])
+                candidate = root
+                for part in relative_target.parts:
+                    candidate = candidate / part
+                    if candidate.is_symlink():
+                        raise PatchError("Sembolik bağlantı hedefi engellendi.")
+                target = candidate.resolve()
                 if target == root or root not in target.parents:
                     raise PatchError(f"Oyun klasörü dışına çıkan hedef engellendi: {item['target']}")
                 # resolve() also detects existing symlink parents that escape the game root.
