@@ -21,7 +21,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Build executable
-        run: pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --version-file version_info.txt --collect-all PySide6 --collect-all keyring --copy-metadata keyring main.py
+        run: pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --version-file version_info.txt --collect-all PySide6 --collect-all argostranslate --collect-all ctranslate2 --collect-all sentencepiece --copy-metadata argostranslate main.py
       - name: Launch packaged Windows app smoke test
         shell: pwsh
         run: |
