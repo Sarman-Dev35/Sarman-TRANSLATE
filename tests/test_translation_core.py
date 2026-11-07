@@ -12,7 +12,7 @@ from patch_manager import PatchError, inspect_patch, install_patch, uninstall_la
 from gemini_translator import GeminiTranslationError, translate_batch
 from translation_core import (
     TextEntry, scan_game_texts, validate_translation, save_workspace,
-    load_workspace, build_translated_files, create_translation_patch,
+    load_workspace, build_translated_files, create_translation_patch, StaleSourceError,
 )
 
 
@@ -201,6 +201,29 @@ class PatchManagerTests(unittest.TestCase):
                 self.assertEqual(installed_patch_languages(game), set())
                 self.assertEqual(target.read_text(encoding="utf-8"), "original")
 
+
+    def test_export_rejects_stale_source_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "strings.json"
+            source.write_text('{"title":"Start"}', encoding="utf-8")
+            entries = scan_game_texts(root)
+            entries[0].translated = "Başla"
+            source.write_text('{"title":"Continue"}', encoding="utf-8")
+            with self.assertRaises(StaleSourceError):
+                build_translated_files(root, entries)
+
+    def test_ini_export_preserves_crlf_line_endings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "lang.ini"
+            source.write_bytes(b"start=Start\\r\\nexit=Exit\\r\\n")
+            entries = scan_game_texts(root)
+            for item in entries:
+                item.translated = {"Start": "Başla", "Exit": "Çıkış"}[item.source]
+            output = build_translated_files(root, entries)["lang.ini"]
+            self.assertIn(b"start=Ba\xc5\x9fla\\r\\n", output)
+            self.assertNotIn(b"\\n", output.replace(b"\\r\\n", b""))
 
     def test_json_keys_with_dots_slashes_and_brackets_round_trip(self):
         with tempfile.TemporaryDirectory() as tmp:
