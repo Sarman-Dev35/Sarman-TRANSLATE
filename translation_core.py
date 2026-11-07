@@ -15,6 +15,12 @@ MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_FILES = 5000
 MAX_DIRECTORIES = 20000
 MAX_ENTRIES = 30000
+
+
+class StaleSourceError(ValueError):
+    """Raised when a game text changed after the translation workspace was scanned."""
+
+
 PLACEHOLDER_RE = re.compile(
     r"\{[^{}]+\}|\$\{[^{}]+\}|\$[A-Za-z_][A-Za-z0-9_]*|%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[a-zA-Z%]|"
     r"\[[A-Za-z0-9_.:-]+\]|<[^>]+>|\\[nrt]|\\u[0-9a-fA-F]{4}"
@@ -231,6 +237,7 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
         except (OSError, UnicodeError):
             continue
         suffix = source_path.suffix.casefold()
+        newline = "\r\n" if "\r\n" in raw else ("\r" if "\r" in raw and "\n" not in raw else "\n")
         try:
             if suffix == ".json":
                 data = json.loads(raw)
@@ -276,8 +283,10 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                         node = node[int(key)] if isinstance(node, list) else node[key]
                     if keys:
                         last = int(keys[-1]) if isinstance(node, list) else keys[-1]
+                        if node[last] != item.source:
+                            raise StaleSourceError(f"{relative}: kaynak metin taramadan sonra değişmiş. Yeniden tara.")
                         node[last] = item.translated
-                encoded = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+                encoded = json.dumps(data, ensure_ascii=False, indent=2) + newline
             elif suffix == ".csv":
                 rows = list(csv.reader(io.StringIO(raw, newline="")))
                 for item in items:
@@ -285,9 +294,11 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                     if match:
                         ri, ci = map(int, match.groups())
                         if ri < len(rows) and ci < len(rows[ri]):
+                            if rows[ri][ci] != item.source:
+                                raise StaleSourceError(f"{relative}: kaynak metin taramadan sonra değişmiş. Yeniden tara.")
                             rows[ri][ci] = item.translated
                 buffer = io.StringIO(newline="")
-                csv.writer(buffer, lineterminator="\n").writerows(rows)
+                csv.writer(buffer, lineterminator=newline).writerows(rows)
                 encoded = buffer.getvalue()
             elif suffix == ".ini":
                 lines = raw.splitlines()
@@ -306,19 +317,27 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                     trailing = raw_value[len(raw_value.rstrip()):]
                     value = raw_value.strip()
                     quote = value[0] if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"') else ""
+                    current_value = value[1:-1] if quote else value
+                    if current_value != item.source:
+                        raise StaleSourceError(f"{relative}: kaynak metin taramadan sonra değişmiş. Yeniden tara.")
                     translated = f"{quote}{item.translated}{quote}" if quote else item.translated
                     lines[line_index] = f"{key}={leading}{translated}{trailing}"
-                encoded = chr(10).join(lines) + (chr(10) if raw.endswith((chr(10), chr(13))) else "")
+                encoded = newline.join(lines) + (newline if raw.endswith(("\n", "\r")) else "")
             elif suffix == ".txt":
                 lines = raw.splitlines()
                 for item in items:
                     match = re.fullmatch(r"line\[(\d+)\]", item.locator)
                     if match and int(match.group(1)) < len(lines):
-                        lines[int(match.group(1))] = item.translated
-                encoded = "\n".join(lines) + ("\n" if raw.endswith(("\n", "\r")) else "")
+                        line_index = int(match.group(1))
+                        if lines[line_index] != item.source:
+                            raise StaleSourceError(f"{relative}: kaynak metin taramadan sonra değişmiş. Yeniden tara.")
+                        lines[line_index] = item.translated
+                encoded = newline.join(lines) + (newline if raw.endswith(("\n", "\r")) else "")
             else:
                 continue
             output[relative] = encoded.encode("utf-8")
+        except StaleSourceError:
+            raise
         except (ValueError, KeyError, IndexError, TypeError, csv.Error):
             continue
     return output
