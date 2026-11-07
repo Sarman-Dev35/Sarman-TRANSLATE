@@ -1,41 +1,67 @@
-# Sarman TRANSLATE — uçtan uca denetim
+# Sarman TRANSLATE — main dalı uçtan uca denetimi
 
-Denetim tarihi: 2026-11-07  
-Çalışma dalı: feature/complete-translation-mvp
+Denetim tarihi: 2026-11-07
+Denetlenen dal: main
+Denetlenen son uygulama kodu: d6e58d39c6dcf46deb6b8b780140e91e315d138
+Dokümantasyon güncellemesi: e009b12178cd7e356eb57bf2ea489fd803958a9d
 
-## Bu turda yapılanlar
+## Bu denetimde bulunan ve düzeltilen sorunlar
 
-- Açılışta oyun kütüphanesi otomatik taranacak şekilde ayarlandı; kullanıcıdan oyun klasörü veya oyun dosyası seçmesi istenmiyor.
-- Steam, Epic Games, Windows GameConfigStore, XboxGames ve bilinen yerel oyun klasörleri taranıyor.
-- Kütüphaneye iki ayrı bilgi eklendi:
-  - **Algılanan diller:** Dil klasörü/dosya adlarından bulunan TR, EN, DE, FR vb. ipuçları.
-  - **Sarman yaması:** Uygulamanın yükleme günlüğünde kayıtlı olan dil yamaları.
-- Dil ipucu taraması oyun başına 1.500 dizin ve 5.000 dosya ile sınırlandırıldı.
-- Yama yükleme günlüğüne dil kodu ekleniyor; eski Türkçe yama kayıtları isimden tanınmaya çalışılıyor.
-- Geri alma işlemi, oyun klasörünün dışına çıkan ve sembolik bağlantı kullanan hedefleri reddedecek şekilde sertleştirildi.
-- Windows EXE'sine Sarman Studios şirket/ürün/sürüm bilgisi eklemek için PyInstaller version resource eklendi.
-- Windows build workflow'una isteğe bağlı Authenticode imzalama eklendi. Sertifika yoksa workflow açıkça imzasız build uyarısı verir.
+1. **Açılışta çift oyun taraması:** Tarama hem MainWindow.__init__ hem de main() içinden zamanlanıyordu. İki QThread art arda başlatılabilir ve ilk thread referansı kaybolabilirdi. İkinci zamanlayıcı kaldırıldı ve start_scan çalışan tarama varken yeniden başlamayacak şekilde korundu.
+2. **Eski oyun seçiminin ekranda kalması:** Yeniden tarama sonrası tablo seçimi ve yama hedefi sıfırlanıyor.
+3. **Geçersiz ZIP seçimi sonrası eski paket bilgilerinin kalması:** Hatalı paket seçilince etiketler ve kurulum durumu da temizleniyor.
+4. **JSON anahtarlarının hatalı eşlenmesi:** Nokta, eğik çizgi, köşeli parantez veya tilde içeren JSON anahtarları eski nokta-ayraçlı konum biçiminde güvenilir şekilde dışa aktarılamıyordu. Yeni kayıtlar JSON Pointer kaçışlaması kullanıyor; eski çalışma dosyaları için geriye dönük okuma korunuyor.
+5. **CSV yerel ayar başlıkları:** key,en-US,fr-FR gibi başlıklar artık İngilizce kaynak sütununu seçiyor; diğer dil sütunları çevrilecek kaynak olarak alınmıyor.
+6. **Oyun metni tarama performansı:** Önceki rglob yaklaşımı atlanacak klasörlerin içine de yürüyebiliyordu. Tarama artık dizinleri gezerken Binaries, bin, cache vb. klasörleri önceden buduyor, sembolik bağlantıları atlıyor ve dosya/dizin sayısını sınırlıyor.
+7. **Kota testi ile gerçek çeviri kuyruğu arasındaki kopukluk:** Önceki komut yalnızca ayarlar penceresinde sayaç gösteriyordu. Şimdi test süresi yerel bir dosyada saklanıyor; süre etkin iken Çeviri Atölyesi'nde kuyruk API çağrısı göndermeden duraklıyor, çalışma kaydediliyor. Süre sona erdiğinde kullanıcı bekleyenleri yeniden başlatabiliyor. Test gerçek Gemini kotasını tüketmiyor.
+8. **Gemini model listesi:** models.list sayfalandırması eklendi; yalnızca generateContent destekleyen modeller gösteriliyor. Kullanıcının seçtiği model API anahtarı testinden sonra korunuyor.
+9. **PyInstaller keyring paketlemesi:** Windows build komutuna --copy-metadata keyring eklendi.
+10. **Build kontrolü:** Windows EXE workflow'u artık yalnızca elle workflow_dispatch ile başlatılır. Main'e kod gönderilmesi yeni build başlatmaz.
 
-## Otomatik testlerde doğrulananlar
+## Otomatik doğrulama
 
-- Python modüllerinin derlenebilirliği (compileall).
-- Birim testleri: JSON/CSV/INI çıkarma ve dışa aktarma, yer tutucu doğrulama, Gemini batch yanıtı, çalışma alanı kaydı, ZIP yama üretimi, yama kurulum/geri alma, yol geçişi reddi, Steam/Epic keşfi ve dil ipucu algılama.
-- Windows runner üzerinde PySide6 masaüstü arayüzü açılış smoke testi.
-- Windows keyring backend kontrolü.
+Son başarılı Windows test koşusu:
+- Workflow run: 42365753784
+- Sonuç: **24 test geçti**
+- compileall: başarılı
+- Birim testleri: başarılı
+- Windows masaüstü UI smoke testi: başarılı
+- Oyun keşfi smoke testi: başarılı
 
-Son başarılı Windows test koşusu (7 Kasım 2026, commit 9d3a6ac9): **17 test geçti**, UI smoke test başarılı. Bu denetim belgesi EXE build'in başarılı olduğunu iddia etmez.
+Bu testler kaynak kod ve UI bileşenlerinin otomatik doğrulamasıdır; her gerçek oyunla uyumluluk veya gerçek Gemini hesabıyla çeviri kalitesini kanıtlamaz.
 
-## Henüz doğrulanmamış / tamamlanmamış noktalar
+## API incelemesi
 
-1. **Gerçek oyun üzerinde uçtan uca doğrulama yok.** Yama yükleme/geri alma geçici test klasörlerinde sınandı; gerçek kurulu bir oyunda henüz test edilmedi.
-2. **Evrensel oyun desteği yok.** Metin çıkarma/dışa aktarma JSON, CSV, TXT ve INI ile sınırlı. Unity assets, Unreal pak, locres, XML/RESX/PO ve özel/şifreli arşivler için adaptörler eksik.
-3. **Dil algısı bir ipucudur.** TR/EN etiketleri klasör ve dosya adlarından gelir; oyunun o dili menüde gerçekten desteklediğini veya seçebildiğini kanıtlamaz. Sarman yaması sütunu yalnızca uygulamanın yükleme günlüğünde bulunan yamaları gösterir.
-4. **Platform kapsamı sınırlı.** Steam/Epic/Windows oyun kayıtları/XboxGames ve bazı standart klasörler taranır. GOG, EA app, Ubisoft Connect, Battle.net ve diğer mağazalar için özel keşif adaptörleri henüz yok.
-5. **Lisans kütüphanesi doğrulaması yok.** Uygulama kurulu oyunları bulur; mağaza hesabındaki kurulmamış satın alımları veya lisans sahipliğini sorgulamaz. Parola, DRM veya anti-cheat atlatma yapılmaz.
-6. **Oyun motoru entegrasyonu eksik.** Metin dosyasını güvenli biçimde yama klasörüne koymak, oyunun o dosyayı otomatik yükleyeceği anlamına gelmez. Her oyun/engine için doğru hedef ve dil etkinleştirme yöntemi gerekebilir.
-7. **Windows imzası henüz etkin değil.** Geçerli bir kod imzalama sertifikası ve GitHub Actions secrets (WINDOWS_CERTIFICATE_BASE64, WINDOWS_CERTIFICATE_PASSWORD) eklenmeden EXE imzasız olur. Dosya özelliklerindeki Sarman Studios bilgisi tek başına SmartScreen güveni sağlamaz.
-8. **Windows EXE build henüz çalıştırılmadı.** version_info.txt ve Authenticode adımı gerçek PyInstaller build'i üzerinde henüz doğrulanmadı. Build ancak ayrıca onay verildiğinde başlatılmalı.
+- Uygulama Gemini REST models.list ve models.generateContent uç noktalarını kullanır.
+- Model listesi API anahtarıyla sorgulanır; generateContent destekleyen modeller filtrelenir.
+- API anahtarı x-goog-api-key başlığında gönderilir; URL'ye eklenmez.
+- Çeviri yanıtı JSON olarak istenir ve kayıt kimlikleri/yer tutucular doğrulanır.
+- HTTP 429 veya RESOURCE_EXHAUSTED kota/durum hatası olarak ele alınır; tamamlanan satırlar çalışma dosyasına kaydedilir.
+- Gerçek ücretsiz kota, erişilebilir model ve limitler Google Cloud projesine göre değişir. Modelin listede görünmesi ücretsiz erişim garantisi değildir.
+- Test kotası akışı artık gerçek API çağrısı yapmadan kuyruk duraklatma davranışını doğrular.
+
+Google'ın resmi belgeleri:
+- https://ai.google.dev/api/generate-content
+- https://ai.google.dev/api/models
+- https://ai.google.dev/gemini-api/docs/troubleshooting
+
+## Hâlâ eksik / gerçek test gerektirenler
+
+1. **Gerçek oyun uçtan uca testi yapılmadı.** Deltarune dahil gerçek bir oyunda metin çıkarma, yama üretme, oyunun yamayı yüklemesi ve geri alma doğrulanmadı.
+2. **Motor adaptörleri yok:** Unity .assets, Unreal .pak/.locres, GameMaker paketleri, XML/RESX/PO ve özel arşivler için adaptörler gerekli. JSON/CSV/TXT/INI dışındaki formatlar bu sürümde otomatik çevrilmez.
+3. **Oyun motoruna yükleme yöntemi:** Metin dosyasını aynı göreli yola kopyalamak oyunun onu okuyacağını garanti etmez. Oyun/engine bazında hedef dosya ve dil etkinleştirme stratejisi gerekir.
+4. **Mağaza kapsamı:** Steam, Epic, Windows GameConfigStore, XboxGames ve sınırlı yerel klasör keşfi var. GOG, EA app, Ubisoft Connect, Battle.net ve diğer mağazalar için adaptör yok.
+5. **Lisans sahipliği:** Kurulu oyunları bulur; hesapların kurulmamış oyun kütüphanelerini veya satın alma geçmişini sorgulamaz.
+6. **Dil tespiti:** TR/EN/DE etiketleri klasör ve dosya adı ipuçlarıdır; oyunun gerçekten desteklediği dil menülerini doğrulamaz.
+7. **Windows imzası:** Geçerli Authenticode sertifikası ve GitHub secrets olmadan EXE imzasız kalır. Sarman Studios dosya metadata'sı SmartScreen güveni sağlamaz.
+8. **Frozen EXE doğrulaması:** Merge sırasında tetiklenen build, eski merge commit'i 8afb040ad03439142e51dee20d1d33e754cece36 için başarılı oldu; fakat denetim sırasında eklenen son kod değişiklikleri bu artifact içinde değildir. Son sürümün EXE build'i ve paketlenmiş keyring davranışı henüz doğrulanmadı.
+9. **Gerçek API entegrasyon testi:** Otomatik testler API yanıtlarını mock eder. Gerçek API anahtarıyla bağlantı ve çeviri çağrısı henüz bu denetimde çalıştırılmadı.
+10. **UI görsel/manuel testi:** Windows smoke testi pencereyi oluşturuyor; farklı DPI, ekran boyutları, yüksek metin uzunlukları ve gerçek kullanıcı etkileşimi elle gözden geçirilmedi.
+
+## Build durumu ve güvenlik
+
+Main'e merge işlemi sonrasında eski Windows Build workflow'u push ile otomatik çalıştı ve başarılı oldu. Bu, build'in bu denetimden önce tamamlandığı anlamına gelir; denetim kodu içeren son sürümün build'i değildir. Bu durum fark edilince workflow workflow_dispatch olarak değiştirildi. Bundan sonra kullanıcı açıkça onaylamadan yeni Windows EXE build'i otomatik başlamaz.
 
 ## Sonuç
 
-Otomatik kütüphane ve dil durumu görünümü eklendi. Test edilmiş MVP kapsamı sağlamlaştırıldı; ancak gerçek oyun/engine adaptörleri, ek mağaza keşfi, gerçek oyunla kurulum testi ve kod imzalama sertifikası olmadan ürünün tüm oyunlarda hazır veya Windows SmartScreen tarafından güvenilir olduğu söylenemez.
+Main dalında otomatik oyun tarama, çeviri iş akışı, JSON/CSV doğruluğu, tarama sınırları, kota simülasyonu ve Gemini model keşfi güçlendirildi. **24 otomatik test ve Windows UI smoke testi başarılıdır.** Bununla birlikte gerçek oyun adaptörleri, gerçek Gemini isteği, farklı Windows ekran koşulları ve denetim sonrası EXE build'i henüz doğrulanmadı. Bu yüzden son build'i almadan önce Deltarune demo gibi gerçek bir hedef oyun üzerinde güvenli, salt okunur tarama ve ardından test kopyasında yama denemesi yapılmalıdır.
