@@ -21,7 +21,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Build executable
-        run: pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --version-file version_info.txt --collect-all PySide6 --collect-all keyring main.py
+        run: pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --version-file version_info.txt --collect-all PySide6 --collect-all keyring --copy-metadata keyring main.py
       - name: Check whether signing secrets are configured
         id: signing_config
         shell: pwsh
