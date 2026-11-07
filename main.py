@@ -61,6 +61,8 @@ class MainWindow(QMainWindow):
         self.patch_manifest: dict | None = None
         self.build_ui()
         self.apply_style()
+        # Start discovery after the event loop begins so the window remains responsive.
+        QTimer.singleShot(150, self.start_scan)
 
     def build_ui(self):
         central = QWidget()
