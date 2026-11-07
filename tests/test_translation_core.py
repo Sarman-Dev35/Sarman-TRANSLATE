@@ -77,6 +77,18 @@ class TranslationCoreTests(unittest.TestCase):
             self.assertEqual(translated["items"], ["Yükle", "Çıkış"])
             self.assertEqual(source.read_text(encoding="utf-8"), original)
 
+    def test_csv_uses_english_column_without_overwriting_other_languages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "strings.csv"
+            original = "key,en,fr\\nstart,Start,Demarrer\\n"
+            source.write_text(original, encoding="utf-8")
+            entries = scan_game_texts(root)
+            self.assertEqual([entry.source for entry in entries], ["Start"])
+            entries[0].translated = "Başla"
+            output = build_translated_files(root, entries)["strings.csv"].decode("utf-8")
+            self.assertIn("start,Başla,Demarrer", output)
+
     def test_ini_translation_export_preserves_comments_and_quotes(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
