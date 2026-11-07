@@ -13,8 +13,8 @@ SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "binaries",
 MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_FILES = 5000
 PLACEHOLDER_RE = re.compile(
-    r"\{[^{}]+\}|\$\{[^{}]+\}|%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[a-zA-Z%]|"
-    r"\[[A-Za-z0-9_.:-]+\]|<[^>]+>|\\\\[nrt]"
+    r"\{[^{}]+\}|\$\{[^{}]+\}|\$[A-Za-z_][A-Za-z0-9_]*|%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[a-zA-Z%]|"
+    r"\[[A-Za-z0-9_.:-]+\]|<[^>]+>|\\[nrt]|\\u[0-9a-fA-F]{4}"
 )
 
 @dataclass
@@ -117,7 +117,7 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
 
 
 def placeholder_signature(text: str) -> list[str]:
-    return sorted(PLACEHOLDER_RE.findall(text))
+    return PLACEHOLDER_RE.findall(text)
 
 
 def validate_translation(source: str, translated: str) -> list[str]:
