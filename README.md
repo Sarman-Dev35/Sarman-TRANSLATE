@@ -89,9 +89,9 @@ python main.py
 
 ## Windows güveni ve dijital imza
 
-Windows'ta yayıncı adının güvenilir görünmesi için EXE'nin geçerli bir Authenticode kod imzasıyla imzalanması gerekir. Build workflow'u isteğe bağlı imzalama adımını destekler. GitHub Actions secrets bölümüne `WINDOWS_CERTIFICATE_BASE64` (PFX sertifikasının Base64 içeriği) ve `WINDOWS_CERTIFICATE_PASSWORD` eklenirse EXE SHA-256 ile imzalanır ve imza doğrulanır. PFX dosyası build artifact'ına eklenmez.
+Windows'ta yayıncı adının güvenilir görünmesi için EXE'nin geçerli bir Authenticode kod imzasıyla imzalanması gerekir. Build workflow'u isteğe bağlı imzalama adımını destekler. GitHub Actions secrets bölümüne `WINDOWS_CERTIFICATE_BASE64` (PFX sertifikasının Base64 içeriği) ve `WINDOWS_CERTIFICATE_PASSWORD` eklenirse paket içindeki `.exe`, `.dll` ve `.pyd` dosyaları SHA-256 ile imzalanır; her dosyanın imzası `signtool verify /pa` ile doğrulanır. PFX dosyası build artifact'ına eklenmez. Sertifika yoksa workflow yalnızca uyarı verir ve imzasız geliştirme çıktısı üretir.
 
-Kod imzalama sertifikası satın alınmalı ve yayıncı kimliğiyle eşleşmelidir; bu proje kendiliğinden sertifika üretemez. Sertifika eklenmezse çıktı **imzasız** kalır ve Windows SmartScreen "Bilinmeyen yayıncı" uyarısı gösterebilir. Geçerli imza bile SmartScreen itibarını veya her bilgisayarda uyarısız açılmayı garanti etmez; itibar zamanla ve indirme geçmişiyle oluşabilir. Sertifika/özel anahtar asla Git deposuna konmamalıdır.
+Kod imzalama sertifikası satın alınmalı ve yayıncı kimliğiyle eşleşmelidir; bu proje kendiliğinden sertifika üretemez. Sertifika eklenmezse çıktı **imzasız** kalır ve Windows SmartScreen "Bilinmeyen yayıncı" uyarısı gösterebilir. Geçerli imza bile SmartScreen veya Smart App Control tarafından her bilgisayarda otomatik izin verileceğini garanti etmez. Smart App Control ayrıca Microsoft'un bulut tabanlı uygulama güvenliği/itibar değerlendirmesini yapar; imza tek başına kesin geçiş bileti değildir. İmzasız bir dosya için güvenlik korumalarını kapatmak yerine yayıncı sertifikası, temiz build zinciri ve Microsoft'un itibar değerlendirmesi kullanılmalıdır. Sertifika/özel anahtar asla Git deposuna konmamalıdır.
 
 ## Windows EXE build
 
