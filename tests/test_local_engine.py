@@ -102,7 +102,7 @@ class LocalEngineTests(unittest.TestCase):
                 self.assertFalse(status["installed"])
                 self.assertFalse(status["present"])
                 self.assertTrue(status["partial_present"])
-                self.assertTrue(local_engine.uninstall_english_turkish_model() is False or not partial_path.exists())
+                self.assertTrue(local_engine.uninstall_english_turkish_model())
                 self.assertFalse(partial_path.exists())
 
 
