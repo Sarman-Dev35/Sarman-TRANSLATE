@@ -216,13 +216,14 @@ class TranslationStudio(QDialog):
         self.glossary_btn.clicked.connect(self.manage_glossary)
         self.model_btn = QPushButton("Modeli indir · 1,13 GB")
         self.model_btn.clicked.connect(self.install_model)
-        self.remove_model_btn = QPushButton("Modeli cihazdan kaldır")
+        self.remove_model_btn = QPushButton("Modeli ve yarım indirmeyi sil")
         self.remove_model_btn.clicked.connect(self.remove_model)
         self.remove_model_btn.setVisible(False)
         for button in (self.scan_btn, self.translate_btn, self.model_btn, self.remove_model_btn, self.glossary_btn, self.export_btn):
             actions.addWidget(button)
         root.addLayout(actions)
         self.model_status_label = QLabel("")
+        self.model_status_label.setWordWrap(True)
         self.model_status_label.setStyleSheet("color:#b9a18d;padding:4px;")
         root.addWidget(self.model_status_label)
         self.table = QTableWidget(0, 4)
@@ -426,7 +427,7 @@ class TranslationStudio(QDialog):
             return
         answer = QMessageBox.question(
             self, "Çeviri modeli kaldırılsın mı?",
-            "Hy-MT2 model dosyası uygulamanın .exe dosyasının bulunduğu klasörden silinecek. "
+            f"Model dosyası ve varsa yarım indirme tamamen silinecek:\\n{info.get('model_path', '')}\\n\\n"
             "Terim sözlüğün, çeviri hafızan ve oyun çalışma kayıtların korunacak. Devam edilsin mi?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
