@@ -48,6 +48,22 @@ class TranslationCoreTests(unittest.TestCase):
             self.assertEqual(translated["items"], ["Yükle", "Çıkış"])
             self.assertEqual(source.read_text(encoding="utf-8"), original)
 
+    def test_ini_translation_export_preserves_comments_and_quotes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "lang.ini"
+            original = '[menu]\nstart = "Start Game"\n; keep this comment\nexit=Exit\n'
+            source.write_text(original, encoding="utf-8")
+            entries = scan_game_texts(root)
+            translations = {"Start Game": "Oyuna Başla", "Exit": "Çıkış"}
+            for item in entries:
+                item.translated = translations[item.source]
+            output = build_translated_files(root, entries)["lang.ini"].decode("utf-8")
+            self.assertIn('start = "Oyuna Başla"', output)
+            self.assertIn("; keep this comment", output)
+            self.assertIn("exit=Çıkış", output)
+            self.assertEqual(source.read_text(encoding="utf-8"), original)
+
     def test_patch_package_manifest_and_contents(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
