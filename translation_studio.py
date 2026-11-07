@@ -5,7 +5,7 @@ import hashlib
 from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal, Qt, QTimer
-from game_visuals import palette_for_game, theme_stylesheet
+from game_visuals import theme_stylesheet
 from PySide6.QtWidgets import (
     QDialog, QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QMessageBox, QFileDialog, QProgressBar, QLineEdit
@@ -200,7 +200,7 @@ class TranslationStudio(QDialog):
         return "".join(c if c.isalnum() or c in "-_" else "_" for c in value)[:80] or "game"
 
     def _build(self):
-        accent, secondary = getattr(self.game, "theme_palette", palette_for_game(self.game.name))
+        # The studio uses the fixed Sarman palette. Avoid a runtime dependency on\n        # per-game palette helpers so older one-folder bundles cannot fail startup.\n        accent, secondary = "#f06a3d", "#a92f45"
         root = QVBoxLayout(self)
         root.setContentsMargins(22, 20, 22, 18)
         root.setSpacing(13)
