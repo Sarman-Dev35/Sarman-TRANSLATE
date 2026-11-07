@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 import zipfile
+import zlib
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from uuid import uuid4
@@ -91,12 +92,14 @@ def _load_manifest(path: str | Path):
                     raise PatchError("Yamanın toplam açılmış boyutu sınırı aşıyor.")
                 checked.append({"source": source, "target": target.as_posix(), "size": info.file_size})
             manifest["files"] = checked
+            if manifest.get("target_game") is not None and not isinstance(manifest.get("target_game"), str):
+                raise PatchError("Yama hedef oyun bilgisi geçersiz.")
             manifest["name"] = str(manifest.get("name") or archive_path.stem)[:120]
             manifest["version"] = str(manifest.get("version") or "Belirtilmemiş")[:40]
             return manifest
     except PatchError:
         raise
-    except (OSError, zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError, KeyError) as exc:
+    except (OSError, zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError, KeyError, RuntimeError, zlib.error) as exc:
         raise PatchError(f"Yama paketi okunamadı: {exc}") from exc
 
 
