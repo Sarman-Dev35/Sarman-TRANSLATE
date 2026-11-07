@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import patch_manager
 from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest
+from gemini_translator import GeminiTranslationError, translate_batch
 from translation_core import (
     TextEntry, scan_game_texts, validate_translation, save_workspace,
     load_workspace, build_translated_files, create_translation_patch,
@@ -20,6 +21,34 @@ class TranslationCoreTests(unittest.TestCase):
             (root / "strings.json").write_text('{"title":"New Game","id":"ABC123","items":["Load","Exit"]}', encoding="utf-8")
             entries = scan_game_texts(root)
             self.assertEqual({e.source for e in entries}, {"New Game", "Load", "Exit"})
+
+    def test_gemini_batch_response_and_placeholders(self):
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self):
+                result = {"translations": [
+                    {"id": "row1", "text": "Merhaba {player}"},
+                    {"id": "row2", "text": "Yükle %s"}
+                ]}
+                payload = {"candidates": [{"content": {"parts": [{"text": json.dumps(result, ensure_ascii=False)}]}}]}
+                return json.dumps(payload).encode("utf-8")
+        with patch("gemini_translator.urllib.request.urlopen", return_value=Response()):
+            result = translate_batch("fake-key", "gemini-test", [("row1", "Hello {player}"), ("row2", "Load %s")])
+        self.assertEqual(result["row1"], "Merhaba {player}")
+        self.assertEqual(result["row2"], "Yükle %s")
+
+    def test_gemini_batch_rejects_lost_placeholders(self):
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read(self):
+                result = {"translations": [{"id": "row1", "text": "Merhaba"}]}
+                payload = {"candidates": [{"content": {"parts": [{"text": json.dumps(result)}]}}]}
+                return json.dumps(payload).encode("utf-8")
+        with patch("gemini_translator.urllib.request.urlopen", return_value=Response()):
+            with self.assertRaises(GeminiTranslationError):
+                translate_batch("fake-key", "gemini-test", [("row1", "Hello {player}")])
 
     def test_placeholder_validation(self):
         self.assertEqual(validate_translation("Hello {player_name}", "Merhaba {player_name}"), [])
