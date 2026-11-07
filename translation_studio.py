@@ -7,11 +7,11 @@ from pathlib import Path
 from PySide6.QtCore import QThread, Signal, Qt, QTimer
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
-    QTableWidgetItem, QHeaderView, QMessageBox, QFileDialog, QProgressBar
+    QTableWidgetItem, QHeaderView, QMessageBox, QFileDialog, QProgressBar, QInputDialog
 )
 
 from translation_core import TextEntry, scan_game_texts, load_workspace, save_workspace, build_translated_files, create_translation_patch, validate_translation
-from local_engine import translate_text, model_status, install_english_turkish_model, LocalTranslationError
+from local_engine import translate_text, model_status, install_english_turkish_model, LocalTranslationError, glossary_items, set_glossary_term, delete_glossary_term
 from engine_support import inspect_game_engine
 
 SERVICE = "Sarman.TRANSLATE.Gemini"
@@ -125,11 +125,13 @@ class TranslationStudio(QDialog):
         self.translate_btn.clicked.connect(self.translate_pending)
         self.export_btn = QPushButton("Yama ZIP'i oluştur")
         self.export_btn.clicked.connect(self.export_patch)
+        self.glossary_btn = QPushButton("Terim sözlüğü")
+        self.glossary_btn.clicked.connect(self.manage_glossary)
         self.model_btn = QPushButton("Yerel modeli kur")
         self.model_btn.clicked.connect(self.install_model)
         self.save_btn = QPushButton("Kaydet")
         self.save_btn.clicked.connect(self.save)
-        for button in (self.scan_btn, self.translate_btn, self.model_btn, self.export_btn, self.save_btn):
+        for button in (self.scan_btn, self.translate_btn, self.model_btn, self.glossary_btn, self.export_btn, self.save_btn):
             actions.addWidget(button)
         root.addLayout(actions)
         self.model_status_label = QLabel("")
@@ -245,6 +247,30 @@ class TranslationStudio(QDialog):
             else:
                 QMessageBox.warning(self, "Kaydetme", str(exc))
 
+    def manage_glossary(self):
+        while True:
+            items = glossary_items()
+            options = [f"{source}  →  {target}" for source, target in items]
+            choice, ok = QInputDialog.getItem(self, "Terim sözlüğü", "Oyun terimleri (eklemek için İptal):", options, 0, False)
+            if not ok:
+                source, ok_source = QInputDialog.getText(self, "Yeni terim", "İngilizce terim:")
+                if not ok_source:
+                    break
+                target, ok_target = QInputDialog.getText(self, "Yeni terim", "Türkçe karşılığı:")
+                if ok_target and source.strip() and target.strip():
+                    try:
+                        set_glossary_term(source, target)
+                    except Exception as exc:
+                        QMessageBox.warning(self, "Sözlük", str(exc))
+                break
+            index = options.index(choice)
+            source = items[index][0]
+            answer = QMessageBox.question(self, "Terimi sil", f"'{source}' özel sözlükten silinsin mi?",
+                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if answer == QMessageBox.Yes:
+                delete_glossary_term(source)
+            break
+
     def refresh_model_status(self):
         info = model_status()
         self.model_status_label.setText(info["message"] + "  ·  İlk kurulum internet gerektirir; sonrasında çevrimdışı çalışır.")
@@ -336,7 +362,7 @@ class TranslationStudio(QDialog):
         self.status.setText("Çeviri kuyruğu tamamlandı. Çevirileri gözden geçir.")
 
     def _set_busy(self, busy):
-        for button in (self.scan_btn, self.translate_btn, self.export_btn, self.model_btn):
+        for button in (self.scan_btn, self.translate_btn, self.export_btn, self.model_btn, self.glossary_btn):
             button.setEnabled(not busy)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers if busy else (QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed))
 
