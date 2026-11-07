@@ -7,20 +7,20 @@ import struct
 from pathlib import Path
 
 SIZE = 256
-SUPERSAMPLE = 4
+SUPERSAMPLE = 2
 OUT = Path(__file__).resolve().parents[1] / "assets" / "sarman-translate.ico"
 
 
-def distance_to_segment(px, py, ax, ay, bx, by):
+def distance_sq_to_segment(px, py, ax, ay, bx, by):
     dx, dy = bx - ax, by - ay
     length_sq = dx * dx + dy * dy
     if not length_sq:
-        return math.hypot(px - ax, py - ay)
+        return (px - ax) ** 2 + (py - ay) ** 2
     t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length_sq))
-    return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+    return (px - (ax + t * dx)) ** 2 + (py - (ay + t * dy)) ** 2
 
 
-def cubic_points(p0, p1, p2, p3, steps=96):
+def cubic_points(p0, p1, p2, p3, steps=48):
     points = []
     for index in range(steps + 1):
         t = index / steps
@@ -62,13 +62,20 @@ def render_pixels():
                         alpha = 255
                     else:
                         color, alpha = (0, 0, 0), 0
-                    nearest = min(
-                        distance_to_segment(px, py, a[0], a[1], b[0], b[1])
-                        for a, b in segments
-                    )
-                    # Round caps at both ends.
-                    nearest = min(nearest, math.hypot(px - 176, py - 76), math.hypot(px - 74, py - 192))
-                    if nearest <= 12.5:
+                    if 48 <= px <= 205 and 42 <= py <= 232:
+                        nearest_sq = min(
+                            distance_sq_to_segment(px, py, a[0], a[1], b[0], b[1])
+                            for a, b in segments
+                        )
+                        # Round caps at both ends.
+                        nearest_sq = min(
+                            nearest_sq,
+                            (px - 176) ** 2 + (py - 76) ** 2,
+                            (px - 74) ** 2 + (py - 192) ** 2,
+                        )
+                    else:
+                        nearest_sq = float("inf")
+                    if nearest_sq <= 12.5 ** 2:
                         blend = max(0.0, min(1.0, (py - 50) / 180))
                         copper = (
                             int(243 * (1 - blend) + 201 * blend),
