@@ -26,7 +26,7 @@ class LocalEngineTests(unittest.TestCase):
                 result = local_engine.translate_text("Press any key {player}", game_name="Test Game")
             self.assertEqual(result, "Bir tuşa bas {player}")
             self.assertIn("Translate the following video-game text from English into Turkish", fake.prompt)
-            self.assertIn("Return only the Turkish translation", fake.prompt)
+            self.assertIn("without additional explanation", fake.prompt)
             self.assertNotIn("<|im_start|>", fake.prompt)
             self.assertEqual(fake.kwargs["temperature"], 0.7)
             self.assertEqual(fake.kwargs["top_k"], 20)
