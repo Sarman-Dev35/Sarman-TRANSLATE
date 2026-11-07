@@ -248,7 +248,10 @@ def uninstall_latest(game_dir: str | Path) -> str:
 
 def installed_patch_languages(game_dir: str | Path) -> set[str]:
     """Return language codes from active Sarman patch journals for one game."""
-    root = Path(game_dir).resolve()
+    try:
+        root = Path(game_dir).resolve()
+    except (OSError, ValueError, RuntimeError, TypeError):
+        return set()
     base = APP_DATA / "backups"
     found: set[str] = set()
     if not base.is_dir():
@@ -285,7 +288,7 @@ def uninstall_all(game_dir: str | Path) -> list[str]:
             state = json.loads(state_path.read_text(encoding="utf-8"))
             if isinstance(state, dict) and state.get("schema") == 1 and Path(state.get("game_dir", "")).resolve() == root:
                 states.append((state_path.stat().st_mtime_ns, state_path, state))
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError, RuntimeError):
             continue
     names = []
     for _, state_path, state in sorted(states, key=lambda item: item[0], reverse=True):
