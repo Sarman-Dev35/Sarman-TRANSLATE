@@ -125,6 +125,7 @@ def install_patch(archive: str | Path, game_dir: str | Path) -> dict:
     backup_dir.mkdir(parents=True, exist_ok=False)
     state_path = backup_dir / "install.json"
     state = {"schema": 1, "id": patch_id, "name": manifest["name"], "version": manifest["version"],
+             "language": str(manifest.get("language") or "").casefold(),
              "game_dir": str(root), "backup_dir": str(backup_dir), "files": []}
     written = []
     try:
@@ -216,3 +217,28 @@ def uninstall_latest(game_dir: str | Path) -> str:
     name = state.get("name", "Yama")
     shutil.rmtree(state_path.parent, ignore_errors=True)
     return name
+
+
+def installed_patch_languages(game_dir: str | Path) -> set[str]:
+    """Return language codes from active Sarman patch journals for one game."""
+    root = Path(game_dir).resolve()
+    base = APP_DATA / "backups"
+    found: set[str] = set()
+    if not base.is_dir():
+        return found
+    try:
+        for state_path in base.glob("*/**/install.json"):
+            try:
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+                if state.get("schema") != 1 or Path(state.get("game_dir", "")).resolve() != root:
+                    continue
+                language = state.get("language")
+                if isinstance(language, str) and language.strip():
+                    found.add(language.strip().casefold())
+                elif "türkçe" in str(state.get("name", "")).casefold() or "turkish" in str(state.get("name", "")).casefold():
+                    found.add("tr")
+            except (OSError, ValueError, TypeError):
+                continue
+    except OSError:
+        return found
+    return found
