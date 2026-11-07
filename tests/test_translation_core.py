@@ -72,6 +72,17 @@ class PatchManagerTests(unittest.TestCase):
             with self.assertRaises(PatchError):
                 inspect_patch(archive)
 
+    def test_rejects_executable_patch_targets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive = root / "unsafe.zip"
+            manifest = {"name": "unsafe", "version": "1", "files": [{"source": "files/game.exe", "target": "game.exe"}]}
+            with zipfile.ZipFile(archive, "w") as zf:
+                zf.writestr("sarman-patch.json", json.dumps(manifest))
+                zf.writestr("files/game.exe", "not really an exe")
+            with self.assertRaises(PatchError):
+                inspect_patch(archive)
+
     def test_install_and_rollback_restore_original(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
