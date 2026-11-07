@@ -52,6 +52,23 @@ class LocalEngineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch.object(local_engine, "MODEL_PATH", Path(tmp) / "missing.gguf"):
             self.assertFalse(local_engine.model_status()["installed"])
 
+    def test_model_status_distinguishes_missing_partial_corrupt_and_installed_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model_path = Path(tmp) / local_engine.MODEL_NAME
+            partial_path = model_path.with_suffix(model_path.suffix + ".part")
+            with patch.object(local_engine, "MODEL_PATH", model_path), patch.object(local_engine, "MODEL_FILE_SIZE", 8):
+                self.assertEqual(local_engine.model_status()["state"], "missing")
+                partial_path.write_bytes(b"part")
+                self.assertEqual(local_engine.model_status()["state"], "partial")
+                partial_path.unlink()
+                model_path.write_bytes(b"bad")
+                status = local_engine.model_status()
+                self.assertEqual(status["state"], "corrupt")
+                self.assertTrue(status["present"])
+                self.assertFalse(status["installed"])
+                model_path.write_bytes(b"12345678")
+                self.assertEqual(local_engine.model_status()["state"], "installed")
+
     def test_packaged_model_lives_next_to_executable(self):
         with patch.object(local_engine.sys, "frozen", True, create=True), patch.object(
             local_engine.sys, "executable", r"C:\\Portable\\Sarman TRANSLATE\\Sarman TRANSLATE.exe"
