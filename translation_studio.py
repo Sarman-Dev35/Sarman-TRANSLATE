@@ -427,7 +427,7 @@ class TranslationStudio(QDialog):
             return
         answer = QMessageBox.question(
             self, "Çeviri modeli kaldırılsın mı?",
-            f"Model dosyası ve varsa yarım indirme tamamen silinecek:\\n{info.get('model_path', '')}\\n\\n"
+            f"Model dosyası ve varsa yarım indirme tamamen silinecek:\n{info.get('model_path', '')}\n\n"
             "Terim sözlüğün, çeviri hafızan ve oyun çalışma kayıtların korunacak. Devam edilsin mi?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
         )
