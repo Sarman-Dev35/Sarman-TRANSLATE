@@ -112,6 +112,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(900, 620)
         self.games: list[Game] = []
         self.worker = None
+        self._scan_generation = 0
         self.language_settings = QSettings("Sarman Studios", "Sarman TRANSLATE")
         self.patch_path: str | None = None
         self.patch_manifest: dict | None = None
@@ -371,10 +372,13 @@ class MainWindow(QMainWindow):
     def start_scan(self):
         if self.worker and self.worker.isRunning():
             return
+        self._scan_generation += 1
+        generation = self._scan_generation
         self.scan_btn.setEnabled(False)
         self.scan_btn.setText("Taranıyor…")
         self.library_status.setText("Oyun kütüphaneleri taranıyor…")
         worker = ScanWorker(parent=self)
+        worker.generation = generation
         self.worker = worker
         worker.completed.connect(self.scan_finished)
         worker.failed.connect(self.scan_failed)
@@ -390,26 +394,36 @@ class MainWindow(QMainWindow):
 
     def scan_finished(self, games):
         worker = self.sender()
-        if worker is not None and worker is not self.worker:
+        if worker is not None and (
+            worker is not self.worker
+            or getattr(worker, "generation", None) != self._scan_generation
+        ):
             return
-        self.studio_btn.setEnabled(False)
-        self.install_btn.setEnabled(False)
-        self.remove_game_patches_btn.setEnabled(False)
-        self.recover_incomplete_btn.setEnabled(False)
-        self.source_language_combo.clear()
-        self.source_language_combo.setEnabled(False)
-        self.table.clearSelection()
-        self.table.setCurrentCell(-1, -1)
-        self.target_label.setText("Önce Oyun kütüphanesi bölümünden bir oyun seç.")
-        self.games = games
-        self.render_games()
-        self.library_status.setText(f"Tarama tamamlandı · {len(games)} oyun bulundu")
-        self.selection_changed()
-        self.scan_btn.setText("⟳   Yeniden tara")
+        try:
+            self.studio_btn.setEnabled(False)
+            self.install_btn.setEnabled(False)
+            self.remove_game_patches_btn.setEnabled(False)
+            self.recover_incomplete_btn.setEnabled(False)
+            self.source_language_combo.clear()
+            self.source_language_combo.setEnabled(False)
+            self.table.clearSelection()
+            self.table.setCurrentCell(-1, -1)
+            self.target_label.setText("Önce Oyun kütüphanesi bölümünden bir oyun seç.")
+            self.games = games
+            self.render_games()
+            self.library_status.setText(f"Tarama tamamlandı · {len(games)} oyun bulundu")
+            self.selection_changed()
+            self.scan_btn.setText("⟳   Yeniden tara")
+        except Exception as exc:
+            self.library_status.setText("Tarama sonuçları arayüze aktarılamadı.")
+            QMessageBox.warning(self, APP_NAME, f"Oyunlar bulundu ancak liste güncellenemedi:\\n{exc}")
 
     def scan_failed(self, message):
         worker = self.sender()
-        if worker is not None and worker is not self.worker:
+        if worker is not None and (
+            worker is not self.worker
+            or getattr(worker, "generation", None) != self._scan_generation
+        ):
             return
         self.library_status.setText("Tarama sırasında hata oluştu")
         QMessageBox.warning(self, APP_NAME, message)
