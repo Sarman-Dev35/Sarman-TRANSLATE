@@ -89,7 +89,7 @@ Build yalnızca açıkça başlatıldığında/ana dala alındığında çalış
 
 ```powershell
 pip install -r requirements.txt
-pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --collect-all PySide6 main.py
+pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --collect-all PySide6 --collect-all keyring main.py
 ```
 
 Çıktı: `dist/Sarman TRANSLATE/Sarman TRANSLATE.exe`
