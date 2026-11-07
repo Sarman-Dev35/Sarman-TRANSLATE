@@ -163,8 +163,8 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
             if suffix == ".json":
                 data = json.loads(raw)
                 for item in items:
-                    locator = item.locator.removeprefix("root.")
-                    if locator == "root":
+                    locator = item.locator.removeprefix("root").lstrip(".")
+                    if not locator:
                         continue
                     parts = re.findall(r"[^.\[\]]+|\[(\d+)\]", locator)
                     keys = []
