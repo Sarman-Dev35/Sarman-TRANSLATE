@@ -247,12 +247,15 @@ class TranslationStudio(QDialog):
     def translate_pending(self):
         try:
             api_key = credential_store.get_password(SERVICE, "user-api-key")
-            model = credential_store.get_password(SERVICE, "model") or "gemini-2.5-flash"
+            model = credential_store.get_password(SERVICE, "model")
         except Exception as exc:
             QMessageBox.warning(self, "Gemini API", f"Windows kimlik bilgisi kasası açılamadı: {exc}")
             return
         if not api_key:
             QMessageBox.information(self, "Gemini API", "Önce Ayarlar > Gemini API bölümünden kendi API anahtarını kaydet.")
+            return
+        if not model:
+            QMessageBox.information(self, "Gemini API", "Önce Gemini API ayarlarında bağlantıyı test et ve kullanılabilir bir model seç.")
             return
         indices = [i for i, entry in enumerate(self.entries) if entry.status != "translated" or not entry.translated]
         if not indices:
