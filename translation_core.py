@@ -235,7 +235,8 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
         if not source_path.is_file():
             raise StaleSourceError(f"{relative}: kaynak dosya artık bulunamıyor. Yeniden tara.")
         try:
-            raw = source_path.read_text(encoding="utf-8-sig")
+            with source_path.open("r", encoding="utf-8-sig", newline="") as stream:
+                raw = stream.read()
         except (OSError, UnicodeError) as exc:
             raise StaleSourceError(f"{relative}: kaynak dosya okunamıyor. Dosya değişmiş veya UTF-8 dışı olabilir.") from exc
         suffix = source_path.suffix.casefold()
