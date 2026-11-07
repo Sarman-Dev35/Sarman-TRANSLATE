@@ -202,7 +202,7 @@ class TranslationStudio(QDialog):
         self.export_btn.clicked.connect(self.export_patch)
         self.glossary_btn = QPushButton("Terim sözlüğü")
         self.glossary_btn.clicked.connect(self.manage_glossary)
-        self.model_btn = QPushButton("Yerel modeli indir · 2,5 GB")
+        self.model_btn = QPushButton("Çeviri modelini indir · 1,13 GB")
         self.model_btn.clicked.connect(self.install_model)
         for button in (self.scan_btn, self.translate_btn, self.model_btn, self.glossary_btn, self.export_btn):
             actions.addWidget(button)
@@ -334,7 +334,7 @@ class TranslationStudio(QDialog):
         if self.worker and self.worker.isRunning():
             return
         self.model_btn.setEnabled(False)
-        self.status.setText("Yerel İngilizce → Türkçe modeli indiriliyor…")
+        self.status.setText("Hy-MT2 İngilizce → Türkçe çeviri modeli indiriliyor…")
         self.worker = ModelInstallWorker(self)
         self.worker.completed.connect(self._model_installed)
         self.worker.failed.connect(self._model_install_failed)
@@ -347,18 +347,18 @@ class TranslationStudio(QDialog):
             self.model_status_label.setText(f"Model indiriliyor… %{percent}  ·  {downloaded // (1024*1024)} / {total // (1024*1024)} MB")
 
     def _model_installed(self):
-        self.status.setText("Yerel model hazır. Artık internet olmadan çeviri yapabilirsin.")
+        self.status.setText("Hy-MT2 hazır. Artık internet olmadan çeviri yapabilirsin.")
         self.refresh_model_status()
 
     def _model_install_failed(self, message):
         self.status.setText("Model kurulumu başarısız.")
         self.model_btn.setEnabled(True)
-        QMessageBox.warning(self, "Yerel model", message)
+        QMessageBox.warning(self, "Çeviri modeli", message)
 
     def translate_pending(self):
         info = model_status()
         if not info["installed"]:
-            QMessageBox.information(self, "Yerel model", "Önce yaklaşık 2,5 GB boyutundaki Qwen3 4B yerel modelini indir.")
+            QMessageBox.information(self, "Çeviri modeli", "Önce yaklaşık 1,13 GB boyutundaki Hy-MT2 çeviri modelini indir.")
             return
         indices = [i for i, entry in enumerate(self.entries) if entry.status != "translated" or not entry.translated]
         if not indices:
