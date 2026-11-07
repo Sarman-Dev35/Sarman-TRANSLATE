@@ -187,9 +187,9 @@ def _scan_xbox_games_folder() -> list[Game]:
                 games.append(Game(folder.name, "Xbox uygulaması · kurulu", str(folder), candidates[0].stem))
     return games
 
-def _scan_user_game_folders() -> list[Game]:
+def _scan_user_game_folders(extra_roots: Iterable[str] = ()) -> list[Game]:
     games: list[Game] = []
-    roots = [Path("D:/Games"), Path("D:/Oyunlar"), Path.home() / "Games", Path.home() / "Oyunlar"]
+    roots = [Path("D:/Games"), Path("D:/Oyunlar"), Path.home() / "Games", Path.home() / "Oyunlar"] + [Path(p).expanduser() for p in extra_roots]
     ignored = {"common files", "windowsapps", "windows", "microsoft", "nvidia corporation", "python", "nodejs"}
     excluded = ("unins", "uninstall", "setup", "redist", "crashreport", "crashhandler", "updater")
     for root in roots:
@@ -214,9 +214,9 @@ def _scan_user_game_folders() -> list[Game]:
                 continue
     return games
 
-def discover_games() -> list[Game]:
+def discover_games(extra_roots: Iterable[str] = ()) -> list[Game]:
     """Discover installed games from local platform manifests and Windows game registrations."""
-    discovered = _scan_steam() + _scan_epic() + _read_game_config_store() + _scan_xbox_games_folder() + _scan_user_game_folders()
+    discovered = _scan_steam() + _scan_epic() + _read_game_config_store() + _scan_xbox_games_folder() + _scan_user_game_folders(extra_roots)
     unique: dict[str, Game] = {}
     priority = ("Steam", "Epic Games", "Microsoft Store", "Xbox", "Windows oyun kaydı")
     for game in discovered:
