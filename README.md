@@ -10,12 +10,12 @@ Sarman TRANSLATE, Windows için oyun yerelleştirme çalışma alanıdır. Kurul
 - Steam kurulum manifestleri, Epic Launcher `*.item` kayıtları, Windows GameConfigStore ve XboxGames klasörleri üzerinden yerel oyun keşfi.
 - Kullanıcının eklediği oyun kütüphanesi klasörlerini tarama.
 - Oyun adına, platforma ve yola göre arama.
-- JSON, CSV ve TXT metin dosyalarını salt okunur tarama.
+- JSON, CSV, TXT ve INI metin dosyalarını salt okunur tarama.
 - Çeviri Atölyesi: kaynak/çeviri tabloları, elle düzenleme, Gemini kuyruğu ve yerel çalışma kaydı.
 - Gemini model listesini API'den alma; kullanıcı kendi API anahtarını ekler.
 - Windows kimlik bilgisi kasasında yerel API anahtarı saklama ve silme.
 - Yer tutucu/biçim kodu ve satır sonu kalite kontrolü.
-- Desteklenen JSON/CSV/TXT dosyalarından manifestli ZIP yama oluşturma.
+- Desteklenen JSON/CSV/TXT/INI dosyalarından manifestli ZIP yama oluşturma.
 - Yama paketinde yol geçişi, symlink, dosya sayısı/boyutu, dosya türü ve UTF-8 kontrolleri.
 - Yama yüklemeden önce dosya yedeği; işlem hatasında geri sarma ve son yamayı geri alma.
 - Kota/bağlantı hatasında tamamlanan çevirileri kaydetme; daha sonra bekleyenleri sürdürme.
@@ -42,7 +42,7 @@ Gemini kotası Google Cloud projesine ve modele göre değişir. Aynı projede y
 
 ## Desteklenen dosya biçimleri ve sınırlar
 
-Şu an çıkarma ve dışa aktarma için doğrulanmış biçimler: **JSON, CSV, TXT**. Diğer dosyalar (XML, RESX, INI, PO, Unity/Unreal paketleri, özel arşivler, ikili varlıklar) bu sürümde otomatik değiştirilmez. Oyun motoruna özgü dil kayıt/etkinleştirme adımları ayrı adaptör gerektirir.
+Şu an çıkarma ve dışa aktarma için doğrulanmış biçimler: **JSON, CSV, TXT, INI**. Diğer dosyalar (XML, RESX, INI, PO, Unity/Unreal paketleri, özel arşivler, ikili varlıklar) bu sürümde otomatik değiştirilmez. Oyun motoruna özgü dil kayıt/etkinleştirme adımları ayrı adaptör gerektirir.
 
 Yama paketi yalnızca UTF-8 JSON/CSV/TXT dosyalarını kabul eder. Paket dosyalarını oyuna kopyalamak, oyunun yeni dosya yolunu otomatik olarak yükleyeceğini garanti etmez. İlk denemeyi gerçek oyun yerine test kopyasında yap.
 
