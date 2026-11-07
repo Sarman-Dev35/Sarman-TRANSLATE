@@ -247,7 +247,8 @@ def scan_game_texts(
                         item = _entry(file, root, f"line[{line_index}]", line)
                         if item:
                             found.append(item)
-            except (ValueError, csv.Error, json.JSONDecodeError):
+            except (ValueError, csv.Error, json.JSONDecodeError, RecursionError):
+                # A single deeply nested or malformed localization file must not abort the game scan.
                 continue
             entries.extend(found)
             if len(entries) >= MAX_ENTRIES:
