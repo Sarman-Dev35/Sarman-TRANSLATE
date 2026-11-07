@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from game_discovery import _scan_epic, _scan_steam, discover_games
+from game_discovery import _scan_epic, _scan_steam, _detect_language_files, discover_games
 
 
 class GameDiscoveryTests(unittest.TestCase):
@@ -35,6 +35,15 @@ class GameDiscoveryTests(unittest.TestCase):
             with patch.dict(os.environ, {"PROGRAMDATA": str(base)}):
                 found = _scan_epic()
             self.assertTrue(any(item.name == "Epic Sample" and item.path == str(game) for item in found))
+
+    def test_detects_language_codes_from_locale_folders(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            locale = root / "Data" / "Localization"
+            locale.mkdir(parents=True)
+            (locale / "tr-TR.json").write_text('{"hello":"Merhaba"}', encoding="utf-8")
+            (locale / "en-US.json").write_text('{"hello":"Hello"}', encoding="utf-8")
+            self.assertEqual(_detect_language_files(root), ("EN", "TR"))
 
     def test_user_added_folder_discovers_game_executable(self):
         with tempfile.TemporaryDirectory() as tmp:
