@@ -1,19 +1,16 @@
 from __future__ import annotations
 
 import sys
-import json
-import os
-from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QMessageBox, QPushButton, QProgressBar, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QTabWidget
 )
 
-from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest
+from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest, installed_patch_languages
 from gemini_settings import GeminiSettingsDialog
 from translation_studio import TranslationStudio
 
@@ -59,7 +56,6 @@ class MainWindow(QMainWindow):
         self.resize(1180, 760)
         self.setMinimumSize(900, 620)
         self.games: list[Game] = []
-        self.custom_roots = self.load_custom_roots()
         self.worker = None
         self.patch_path: str | None = None
         self.patch_manifest: dict | None = None
@@ -126,9 +122,6 @@ class MainWindow(QMainWindow):
         self.scan_btn.setObjectName("primary")
         self.scan_btn.clicked.connect(self.start_scan)
         header.addWidget(self.scan_btn)
-        self.add_folder_btn = QPushButton("＋  Oyun klasörü ekle")
-        self.add_folder_btn.clicked.connect(self.add_game_folder)
-        header.addWidget(self.add_folder_btn)
         layout.addLayout(header)
 
         self.pages = QTabWidget()
@@ -177,11 +170,13 @@ class MainWindow(QMainWindow):
         self.studio_btn.clicked.connect(self.open_translation_studio)
         row.addWidget(self.studio_btn)
         lib.addLayout(row)
-        self.table = QTableWidget(0, 3)
-        self.table.setHorizontalHeaderLabels(["OYUN", "KAYNAK", "KURULUM KONUMU"])
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(["OYUN", "KAYNAK", "KURULUM KONUMU", "ALGILANAN DİLLER", "SARMAN YAMASI"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -295,43 +290,6 @@ class MainWindow(QMainWindow):
             return
         event.accept()
 
-    @staticmethod
-    def _settings_path():
-        return Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Sarman" / "TRANSLATE" / "settings.json"
-
-    def load_custom_roots(self):
-        try:
-            data = json.loads(self._settings_path().read_text(encoding="utf-8"))
-            if not isinstance(data, dict):
-                return []
-            roots = data.get("custom_game_roots", [])
-            if not isinstance(roots, list):
-                return []
-            return [str(Path(p)) for p in roots if isinstance(p, str) and Path(p).is_dir()]
-        except (OSError, ValueError, TypeError):
-            return []
-
-    def save_custom_roots(self):
-        path = self._settings_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(".tmp")
-        temporary.write_text(json.dumps({"custom_game_roots": self.custom_roots}, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(temporary, path)
-
-    def add_game_folder(self):
-        folder = QFileDialog.getExistingDirectory(self, "Oyun kütüphanesi klasörünü seç")
-        if not folder:
-            return
-        normalized = os.path.normcase(os.path.abspath(folder))
-        if normalized not in {os.path.normcase(os.path.abspath(p)) for p in self.custom_roots}:
-            self.custom_roots.append(folder)
-            try:
-                self.save_custom_roots()
-                self.library_status.setText(f"Özel oyun klasörü eklendi · {folder}")
-            except OSError as exc:
-                QMessageBox.warning(self, APP_NAME, f"Klasör tercihi kaydedilemedi: {exc}")
-        self.start_scan()
-
     def open_gemini_settings(self):
         dialog = GeminiSettingsDialog(self)
         dialog.exec()
@@ -349,10 +307,9 @@ class MainWindow(QMainWindow):
 
     def start_scan(self):
         self.scan_btn.setEnabled(False)
-        self.add_folder_btn.setEnabled(False)
         self.scan_btn.setText("Taranıyor…")
         self.library_status.setText("Oyun kütüphaneleri taranıyor…")
-        self.worker = ScanWorker(self.custom_roots)
+        self.worker = ScanWorker()
         self.worker.completed.connect(self.scan_finished)
         self.worker.failed.connect(self.scan_failed)
         self.worker.start()
@@ -365,7 +322,6 @@ class MainWindow(QMainWindow):
         self.render_games()
         self.library_status.setText(f"Tarama tamamlandı · {len(games)} oyun bulundu")
         self.scan_btn.setEnabled(True)
-        self.add_folder_btn.setEnabled(True)
         self.scan_btn.setText("⟳   Yeniden tara")
 
     def scan_failed(self, message):
@@ -380,7 +336,11 @@ class MainWindow(QMainWindow):
         items = [g for g in self.games if query in g.name.casefold() or query in g.platform.casefold() or query in g.path.casefold()]
         self.table.setRowCount(len(items))
         for row, game in enumerate(items):
-            for col, value in enumerate((game.name, game.platform, game.path)):
+            patched = installed_patch_languages(game.path)
+            detected = " · ".join(game.detected_languages) if game.detected_languages else "Belirlenemedi"
+            patch_status = " · ".join(code.upper() for code in sorted(patched)) + " yüklü" if patched else "Yüklü değil"
+            values = (game.name, game.platform, game.path, detected, patch_status)
+            for col, value in enumerate(values):
                 cell = QTableWidgetItem(value)
                 cell.setToolTip(value)
                 if col == 0:
@@ -475,6 +435,7 @@ def main():
     app.setApplicationName(APP_NAME)
     window = MainWindow()
     window.show()
+    QTimer.singleShot(300, window.start_scan)
     sys.exit(app.exec())
 
 
