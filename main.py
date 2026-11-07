@@ -512,8 +512,14 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, APP_NAME, "Önce oyun listesinden bir oyun seç.")
             return
         source_language = self.source_language_combo.currentData() or "EN"
-        dialog = TranslationStudio(game, self, source_language=source_language)
-        dialog.exec()
+        if not Path(game.path).is_dir():
+            QMessageBox.warning(self, APP_NAME, "Oyun klasörü artık bulunamıyor. Oyunları yeniden tara ve kurulum konumunu kontrol et.")
+            return
+        try:
+            dialog = TranslationStudio(game, self, source_language=source_language)
+            dialog.exec()
+        except (OSError, RuntimeError, ValueError) as exc:
+            QMessageBox.warning(self, APP_NAME, f"Çeviri Atölyesi açılamadı:\\n{exc}")
 
     def remove_partial_patch_file(self):
         filename, _ = QFileDialog.getOpenFileName(
