@@ -281,6 +281,7 @@ def create_translation_patch(game_dir: str | Path, entries: Iterable[TextEntry],
         "name": f"{game_name} - Türkçe",
         "version": "1.0.0",
         "language": "tr",
+        "target_game": game_name,
         "created_utc": datetime.now(timezone.utc).isoformat(),
         "files": manifest_files,
     }
