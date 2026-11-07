@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import quota_testing
+from translation_studio import TranslateWorker
 
 
 class QuotaTestingTests(unittest.TestCase):
@@ -18,6 +19,15 @@ class QuotaTestingTests(unittest.TestCase):
                 with patch.object(quota_testing.time, "time", return_value=1061):
                     self.assertEqual(quota_testing.quota_test_remaining(), 0)
                 self.assertFalse(state.exists())
+
+    def test_simulated_quota_pauses_worker_without_api_request(self):
+        worker = TranslateWorker([], "not-a-real-key", "model", [], simulate_quota=True)
+        messages = []
+        worker.paused.connect(messages.append)
+        with patch("translation_studio.translate_batch") as translate:
+            worker.run()
+        translate.assert_not_called()
+        self.assertEqual(messages, ["TEST_QUOTA_SIMULATION"])
 
     def test_quota_test_invalid_duration_rejected(self):
         with self.assertRaises(ValueError):
