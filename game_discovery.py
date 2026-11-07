@@ -219,8 +219,43 @@ def _scan_user_game_folders(extra_roots: Iterable[str] = ()) -> list[Game]:
     return games
 
 
-_LANGUAGE_CODES = {"tr": "TR", "tur": "TR", "turkish": "TR", "tr-tr": "TR", "en": "EN", "eng": "EN", "english": "EN", "en-us": "EN", "en-gb": "EN", "de": "DE", "fr": "FR", "es": "ES", "it": "IT", "pt": "PT", "pt-br": "PT", "ru": "RU", "ja": "JA", "jp": "JA", "ko": "KO", "zh": "ZH", "zh-cn": "ZH", "pl": "PL", "nl": "NL"}
-_LANGUAGE_FILE = re.compile(r"(?:^|[._-])(tr|tur|turkish|tr-tr|en|eng|english|en-us|en-gb|de|fr|es|it|pt|pt-br|ru|ja|jp|ko|zh|zh-cn|pl|nl)(?:[._-]|$)", re.I)
+_LANGUAGE_CODES = {
+    "tr": "TR", "tur": "TR", "turkish": "TR", "tr-tr": "TR",
+    "en": "EN", "eng": "EN", "english": "EN", "en-us": "EN", "en-gb": "EN",
+    "de": "DE", "ger": "DE", "german": "DE", "de-de": "DE",
+    "fr": "FR", "fre": "FR", "french": "FR", "fr-fr": "FR",
+    "es": "ES", "spa": "ES", "spanish": "ES", "es-es": "ES",
+    "it": "IT", "ita": "IT", "italian": "IT",
+    "pt": "PT", "por": "PT", "portuguese": "PT", "pt-br": "PT", "pt-pt": "PT",
+    "ru": "RU", "rus": "RU", "russian": "RU",
+    "ja": "JA", "jpn": "JA", "japanese": "JA", "jp": "JA",
+    "ko": "KO", "kor": "KO", "korean": "KO",
+    "zh": "ZH", "zho": "ZH", "chinese": "ZH", "zh-cn": "ZH", "zh-tw": "ZH",
+    "pl": "PL", "pol": "PL", "polish": "PL",
+    "nl": "NL", "dut": "NL", "dutch": "NL",
+    "ar": "AR", "ara": "AR", "arabic": "AR",
+    "hi": "HI", "hin": "HI", "hindi": "HI",
+    "id": "ID", "ind": "ID", "indonesian": "ID",
+    "uk": "UK", "ukr": "UK", "ukrainian": "UK",
+    "sv": "SV", "swe": "SV", "swedish": "SV",
+    "no": "NO", "nor": "NO", "norwegian": "NO",
+    "da": "DA", "dan": "DA", "danish": "DA",
+    "fi": "FI", "fin": "FI", "finnish": "FI",
+    "cs": "CS", "ces": "CS", "czech": "CS",
+    "hu": "HU", "hun": "HU", "hungarian": "HU",
+    "el": "EL", "ell": "EL", "greek": "EL",
+    "he": "HE", "heb": "HE", "hebrew": "HE",
+    "ro": "RO", "ron": "RO", "romanian": "RO",
+    "bg": "BG", "bul": "BG", "bulgarian": "BG",
+    "hr": "HR", "hrv": "HR", "croatian": "HR",
+    "sk": "SK", "slk": "SK", "slovak": "SK",
+    "sl": "SL", "slv": "SL", "slovenian": "SL",
+    "sr": "SR", "srp": "SR", "serbian": "SR",
+}
+_LANGUAGE_FILE = re.compile(
+    r"(?:^|[._-])(" + "|".join(sorted(map(re.escape, _LANGUAGE_CODES), key=len, reverse=True)) + r")(?:[._-]|$)",
+    re.I,
+)
 _LOCALE_DIRS = {"locale", "locales", "lang", "langs", "language", "languages", "localization", "translations", "text"}
 
 def _detect_language_files(game_root: Path) -> tuple[str, ...]:
