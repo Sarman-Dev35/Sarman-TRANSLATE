@@ -66,7 +66,7 @@ class LocalEngineTests(unittest.TestCase):
                 self.assertEqual(status["state"], "corrupt")
                 self.assertTrue(status["present"])
                 self.assertFalse(status["installed"])
-                model_path.write_bytes(b"12345678")
+                model_path.write_bytes(b"GGUF1234")
                 self.assertEqual(local_engine.model_status()["state"], "installed")
 
     def test_packaged_model_lives_next_to_executable(self):
