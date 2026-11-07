@@ -75,6 +75,7 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
     entries: list[TextEntry] = []
     visited_files = 0
     visited_dirs = 0
+    stop = False
     # Prune irrelevant directories during traversal instead of walking all game assets.
     for current, dirs, filenames in os.walk(root, topdown=True, followlinks=False):
         visited_dirs += 1
@@ -91,6 +92,7 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
                 continue
             visited_files += 1
             if visited_files > MAX_FILES:
+                stop = True
                 break
             try:
                 if file.stat().st_size > MAX_FILE_BYTES:
@@ -98,82 +100,85 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
                 text = file.read_text(encoding="utf-8-sig")
             except (OSError, UnicodeError):
                 continue
-        suffix = file.suffix.casefold()
-        found: list[TextEntry] = []
-        try:
-            if suffix == ".json":
-                data = json.loads(text)
-                def walk(node, path=()):
-                    if isinstance(node, dict):
-                        for key, val in node.items():
-                            walk(val, path + (str(key),))
-                    elif isinstance(node, list):
-                        for index, val in enumerate(node):
-                            walk(val, path + (str(index),))
-                    elif isinstance(node, str):
-                        # JSON Pointer escaping makes keys containing dots, slashes or brackets reversible.
-                        locator = "/" + "/".join(part.replace("~", "~0").replace("/", "~1") for part in path)
-                        item = _entry(file, root, locator, node)
+            suffix = file.suffix.casefold()
+            found: list[TextEntry] = []
+            try:
+                if suffix == ".json":
+                    data = json.loads(text)
+
+                    def walk(node, path=()):
+                        if isinstance(node, dict):
+                            for key, val in node.items():
+                                walk(val, path + (str(key),))
+                        elif isinstance(node, list):
+                            for index, val in enumerate(node):
+                                walk(val, path + (str(index),))
+                        elif isinstance(node, str):
+                            # JSON Pointer escaping makes unusual keys reversible.
+                            locator = "/" + "/".join(part.replace("~", "~0").replace("/", "~1") for part in path)
+                            item = _entry(file, root, locator, node)
+                            if item:
+                                found.append(item)
+
+                    walk(data)
+                elif suffix == ".csv":
+                    rows = list(csv.reader(io.StringIO(text, newline="")))
+                    if rows:
+                        header = [x.casefold().strip() for x in rows[0]]
+                        id_names = {"id", "key", "identifier", "translation", "target"}
+                        english_cols = [
+                            i for i, name in enumerate(header)
+                            if re.fullmatch(r"(?:en|eng|english)(?:[-_ ].*)?", name)
+                        ]
+                        source_cols = [
+                            i for i, name in enumerate(header)
+                            if name in {"source", "original", "text", "value", "string", "dialog", "dialogue", "description", "message"}
+                            or any(token in name for token in ("source", "original", "dialogue", "description"))
+                        ]
+                        text_cols = english_cols[:1] or source_cols[:1]
+                        has_header = bool(text_cols) or any(name in id_names for name in header) or any(
+                            re.fullmatch(r"(?:[a-z]{2,3})(?:[-_][a-z]{2,4})?", name) for name in header
+                        )
+                        if not text_cols:
+                            candidates = [i for i, name in enumerate(header) if name not in id_names]
+                            text_cols = candidates[:1] if has_header else list(range(min(len(rows[0]), 8)))
+                        row_start = 1 if has_header else 0
+                        for row_index, row in enumerate(rows[row_start:], start=row_start):
+                            for column_index in text_cols:
+                                if column_index < len(row):
+                                    item = _entry(file, root, f"row[{row_index}].col[{column_index}]", row[column_index])
+                                    if item:
+                                        found.append(item)
+                elif suffix == ".ini":
+                    for line_index, line in enumerate(text.splitlines()):
+                        stripped = line.strip()
+                        if not stripped or stripped.startswith((";", "#", "[")) or "=" not in line:
+                            continue
+                        _, raw_value = line.split("=", 1)
+                        value = raw_value.strip()
+                        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+                            value = value[1:-1]
+                        item = _entry(file, root, f"line[{line_index}]", value)
                         if item:
                             found.append(item)
-                walk(data)
-            elif suffix == ".csv":
-                rows = list(csv.reader(io.StringIO(text, newline="")))
-                if rows:
-                    header = [x.casefold().strip() for x in rows[0]]
-                    id_names = {"id", "key", "identifier", "translation", "target"}
-                    english_cols = [
-                        i for i, name in enumerate(header)
-                        if re.fullmatch(r"(?:en|eng|english)(?:[-_ ].*)?", name)
-                    ]
-                    source_cols = [
-                        i for i, name in enumerate(header)
-                        if name in {"source", "original", "text", "value", "string", "dialog", "dialogue", "description", "message"}
-                        or any(token in name for token in ("source", "original", "dialogue", "description"))
-                    ]
-                    text_cols = english_cols[:1] or source_cols[:1]
-                    has_header = bool(text_cols) or any(name in id_names for name in header) or any(
-                        re.fullmatch(r"(?:[a-z]{2,3})(?:[-_][a-z]{2,4})?", name) for name in header
-                    )
-                    if not text_cols:
-                        candidates = [i for i, name in enumerate(header) if name not in id_names]
-                        text_cols = candidates[:1] if has_header else list(range(min(len(rows[0]), 8)))
-                    start = 1 if has_header else 0
-                    for ri, row in enumerate(rows[start:], start=start):
-                        for ci in text_cols:
-                            if ci < len(row):
-                                item = _entry(file, root, f"row[{ri}].col[{ci}]", row[ci])
-                                if item: found.append(item)
-            elif suffix == ".ini":
-                for line_index, line in enumerate(text.splitlines()):
-                    stripped = line.strip()
-                    if not stripped or stripped.startswith((";", "#", "[")) or "=" not in line:
-                        continue
-                    key, raw_value = line.split("=", 1)
-                    value = raw_value.strip()
-                    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
-                        value = value[1:-1]
-                    item = _entry(file, root, f"line[{line_index}]", value)
-                    if item:
-                        found.append(item)
-            elif suffix == ".txt" and include_txt:
-                for i, line in enumerate(text.splitlines()):
-                    item = _entry(file, root, f"line[{i}]", line)
-                    if item: found.append(item)
-        except (ValueError, csv.Error, json.JSONDecodeError):
-            continue
+                elif suffix == ".txt" and include_txt:
+                    for line_index, line in enumerate(text.splitlines()):
+                        item = _entry(file, root, f"line[{line_index}]", line)
+                        if item:
+                            found.append(item)
+            except (ValueError, csv.Error, json.JSONDecodeError):
+                continue
             entries.extend(found)
             if len(entries) >= MAX_ENTRIES:
                 entries = entries[:MAX_ENTRIES]
+                stop = True
                 break
-        if visited_files > MAX_FILES or len(entries) >= MAX_ENTRIES:
+        if stop:
             break
-    # Stable de-duplication by exact source+locator.
     unique = {}
     for item in entries:
         unique[item.entry_id] = item
     return list(unique.values())
-
 
 def placeholder_signature(text: str) -> list[str]:
     return PLACEHOLDER_RE.findall(text)
