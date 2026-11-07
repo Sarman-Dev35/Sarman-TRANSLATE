@@ -187,12 +187,16 @@ class MainWindow(QMainWindow):
         side.addWidget(nav_title)
         self.nav_library = QPushButton("▦   Oyun kütüphanesi")
         self.nav_patch = QPushButton("⇧   Yama merkezi")
+        self.nav_studio = QPushButton("✦   AI çeviri atölyesi")
         self.nav_library.setObjectName("navActive")
         self.nav_patch.setObjectName("navButton")
         self.nav_library.clicked.connect(lambda: self.pages.setCurrentIndex(0))
         self.nav_patch.clicked.connect(lambda: self.pages.setCurrentIndex(1))
+        self.nav_studio.clicked.connect(self.open_translation_studio)
+        self.nav_studio.setObjectName("navButton")
         side.addWidget(self.nav_library)
         side.addWidget(self.nav_patch)
+        side.addWidget(self.nav_studio)
         side.addStretch()
         version = QLabel("DESKTOP  ·  ÖN SÜRÜM\nYerelleştirme araçları")
         version.setObjectName("sideFoot")
@@ -372,39 +376,6 @@ class MainWindow(QMainWindow):
 
     def apply_style(self, accent="#f06a3d", secondary="#a92f45"):
         self.setStyleSheet(theme_stylesheet(accent, secondary))
-        return
-        self.setStyleSheet("""
-            QWidget { background:#0c0d10; color:#eeeae5; font-family:'Segoe UI'; font-size:13px; }
-            QFrame#sidebar { background:#101115; border-right:1px solid #24252a; }
-            QLabel#brand { font-size:24px; font-weight:900; letter-spacing:2px; color:#f4f0eb; }
-            QLabel#brandSub { color:#e58a43; font-size:11px; font-weight:800; letter-spacing:3px; }
-            QLabel#sideFoot { color:#777a82; font-size:10px; line-height:1.5; }
-            QLabel#eyebrow { color:#e58a43; font-size:10px; font-weight:800; letter-spacing:1.7px; }
-            QLabel#pageTitle { font-size:23px; font-weight:750; }
-            QLabel#muted { color:#92949c; }
-            QLabel#heroTitle { font-size:27px; font-weight:750; padding:3px 0; }
-            QLabel#sectionTitle { font-size:17px; font-weight:700; }
-            QFrame#hero { background:#17181d; border:1px solid #303137; border-radius:13px; }
-            QFrame#statCard, QFrame#panel { background:#141519; border:1px solid #292a30; border-radius:11px; }
-            QLabel#statValue { font-size:17px; font-weight:700; padding-top:4px; }
-            QPushButton { background:#1a1b20; border:1px solid #34353c; border-radius:8px; padding:10px 14px; font-weight:650; }
-            QPushButton:hover { border-color:#e58a43; background:#24201c; }
-            QPushButton:disabled { color:#666870; background:#17181c; border-color:#292a30; }
-            QPushButton#primary { background:#e58a43; color:#1a120c; border:0; padding:11px 17px; font-weight:800; }
-            QPushButton#primary:hover { background:#f09a55; }
-            QPushButton#navButton, QPushButton#navActive { text-align:left; padding:12px 11px; border:0; }
-            QPushButton#navButton { background:transparent; color:#a2a3aa; }
-            QPushButton#navActive { background:#292019; color:#f0a36a; border-left:3px solid #e58a43; }
-            QLineEdit { background:#141519; border:1px solid #303138; border-radius:8px; padding:10px 12px; color:#fff; }
-            QLineEdit:focus { border-color:#e58a43; }
-            QTableWidget { background:#111216; border:1px solid #292a30; border-radius:10px; padding:5px; selection-background-color:#35271d; }
-            QHeaderView::section { background:#17181d; color:#92949c; border:0; padding:12px 9px; font-size:10px; font-weight:800; }
-            QTableWidget::item { padding:9px 8px; border-bottom:1px solid #24252a; }
-            QLabel#warning { color:#dca879; background:#211b16; border:1px solid #493323; border-radius:8px; padding:12px; }
-            QComboBox { background:#141519; border:1px solid #34353c; border-radius:8px; padding:8px 10px; min-width:150px; }
-            QComboBox::drop-down { border:0; width:25px; }
-            QComboBox QAbstractItemView { background:#17181d; selection-background-color:#35271d; }
-        """)
 
     def closeEvent(self, event):
         if self.worker and self.worker.isRunning():
