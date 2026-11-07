@@ -54,7 +54,10 @@ def _is_translatable(value: str) -> bool:
     return True
 
 def _entry(file: Path, root: Path, locator: str, value: str) -> TextEntry | None:
-    leaf = locator.replace("[", ".").replace("]", "").split(".")[-1].casefold()
+    leaf = locator.rsplit("/", 1)[-1] if locator.startswith("/") else locator.replace("[", ".").replace("]", "").split(".")[-1]
+    if locator.startswith("/"):
+        leaf = leaf.replace("~1", "/").replace("~0", "~")
+    leaf = leaf.casefold()
     if leaf in {"id", "uuid", "guid", "appid", "assetid", "objectid"}:
         return None
     if not _is_translatable(value):
@@ -89,26 +92,40 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
         try:
             if suffix == ".json":
                 data = json.loads(text)
-                def walk(node, locator="root"):
+                def walk(node, path=()):
                     if isinstance(node, dict):
                         for key, val in node.items():
-                            walk(val, f"{locator}.{key}")
+                            walk(val, path + (str(key),))
                     elif isinstance(node, list):
                         for index, val in enumerate(node):
-                            walk(val, f"{locator}[{index}]")
+                            walk(val, path + (str(index),))
                     elif isinstance(node, str):
+                        # JSON Pointer escaping makes keys containing dots, slashes or brackets reversible.
+                        locator = "/" + "/".join(part.replace("~", "~0").replace("/", "~1") for part in path)
                         item = _entry(file, root, locator, node)
-                        if item: found.append(item)
+                        if item:
+                            found.append(item)
                 walk(data)
             elif suffix == ".csv":
                 rows = list(csv.reader(io.StringIO(text, newline="")))
                 if rows:
                     header = [x.casefold().strip() for x in rows[0]]
-                    preferred_names = {"en", "english", "source", "original", "text", "value", "string", "dialog", "dialogue", "description", "message"}
-                    text_cols = [i for i, name in enumerate(header) if name in preferred_names or any(token in name for token in ("english", "source", "original", "dialogue", "description"))]
-                    has_header = bool(text_cols) or any(name in {"id", "key", "identifier", "translation", "target"} for name in header)
+                    id_names = {"id", "key", "identifier", "translation", "target"}
+                    english_cols = [
+                        i for i, name in enumerate(header)
+                        if re.fullmatch(r"(?:en|eng|english)(?:[-_ ].*)?", name)
+                    ]
+                    source_cols = [
+                        i for i, name in enumerate(header)
+                        if name in {"source", "original", "text", "value", "string", "dialog", "dialogue", "description", "message"}
+                        or any(token in name for token in ("source", "original", "dialogue", "description"))
+                    ]
+                    text_cols = english_cols[:1] or source_cols[:1]
+                    has_header = bool(text_cols) or any(name in id_names for name in header) or any(
+                        re.fullmatch(r"(?:[a-z]{2,3})(?:[-_][a-z]{2,4})?", name) for name in header
+                    )
                     if not text_cols:
-                        candidates = [i for i, name in enumerate(header) if name not in {"id", "key", "identifier", "translation", "target"}]
+                        candidates = [i for i, name in enumerate(header) if name not in id_names]
                         text_cols = candidates[:1] if has_header else list(range(min(len(rows[0]), 8)))
                     start = 1 if has_header else 0
                     for ri, row in enumerate(rows[start:], start=start):
@@ -200,40 +217,48 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
             if suffix == ".json":
                 data = json.loads(raw)
                 for item in items:
-                    locator = item.locator.removeprefix("root").lstrip(".")
-                    if not locator:
-                        continue
-                    keys = []
-                    token = ""
-                    index = 0
-                    while index < len(locator):
-                        char = locator[index]
-                        if char == ".":
-                            if token:
-                                keys.append(token)
-                                token = ""
-                        elif char == "[":
-                            if token:
-                                keys.append(token)
-                                token = ""
-                            end = locator.find("]", index + 1)
-                            if end < 0:
-                                raise ValueError("Geçersiz JSON konumu")
-                            number = locator[index + 1:end]
-                            if not number.isdigit():
-                                raise ValueError("Geçersiz JSON dizi konumu")
-                            keys.append(int(number))
-                            index = end
-                        else:
-                            token += char
-                        index += 1
-                    if token:
-                        keys.append(token)
+                    if item.locator.startswith("/"):
+                        keys = [
+                            part.replace("~1", "/").replace("~0", "~")
+                            for part in item.locator[1:].split("/")
+                        ]
+                    else:
+                        # Backward compatibility for older workspace locator format.
+                        locator = item.locator.removeprefix("root").lstrip(".")
+                        if not locator:
+                            continue
+                        keys = []
+                        token = ""
+                        index = 0
+                        while index < len(locator):
+                            char = locator[index]
+                            if char == ".":
+                                if token:
+                                    keys.append(token)
+                                    token = ""
+                            elif char == "[":
+                                if token:
+                                    keys.append(token)
+                                    token = ""
+                                end = locator.find("]", index + 1)
+                                if end < 0:
+                                    raise ValueError("Geçersiz JSON konumu")
+                                number = locator[index + 1:end]
+                                if not number.isdigit():
+                                    raise ValueError("Geçersiz JSON dizi konumu")
+                                keys.append(int(number))
+                                index = end
+                            else:
+                                token += char
+                            index += 1
+                        if token:
+                            keys.append(token)
                     node = data
                     for key in keys[:-1]:
-                        node = node[key]
+                        node = node[int(key)] if isinstance(node, list) else node[key]
                     if keys:
-                        node[keys[-1]] = item.translated
+                        last = int(keys[-1]) if isinstance(node, list) else keys[-1]
+                        node[last] = item.translated
                 encoded = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
             elif suffix == ".csv":
                 rows = list(csv.reader(io.StringIO(raw, newline="")))
