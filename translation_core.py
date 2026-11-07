@@ -399,7 +399,7 @@ def create_translation_patch(game_dir: str | Path, entries: Iterable[TextEntry],
     }
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
         archive.writestr("sarman-patch.json", json.dumps(manifest, ensure_ascii=False, indent=2))
         for relative, content in files.items():
             archive.writestr(f"files/{relative}", content)
