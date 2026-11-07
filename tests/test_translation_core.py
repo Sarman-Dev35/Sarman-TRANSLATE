@@ -305,7 +305,7 @@ class PatchManagerTests(unittest.TestCase):
             entries[0].translated = "Şimdi Başla; lütfen"
             output = build_translated_files(root, entries)["locale.csv"]
             self.assertTrue(output.startswith(b"\xef\xbb\xbf"))
-            self.assertIn("start;\"Şimdi Başla; lütfen\";\"Demarrer\"\r\n".encode("utf-8"), output)
+            self.assertIn("start;\"Şimdi Başla; lütfen\";Demarrer\r\n".encode("utf-8"), output)
             self.assertNotIn('start,"Şimdi'.encode("utf-8"), output)
 
     def test_json_bom_indent_and_final_newline_are_preserved(self):
