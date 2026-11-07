@@ -358,6 +358,8 @@ class MainWindow(QMainWindow):
         self.worker.start()
 
     def scan_finished(self, games):
+        self.studio_btn.setEnabled(False)
+        self.install_btn.setEnabled(False)
         self.games = games
         self.game_count.value.setText(str(len(games)))
         self.render_games()
