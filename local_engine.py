@@ -34,6 +34,7 @@ MODEL_FILE_SIZE = 1_133_080_448
 MODEL_SIZE_HINT = MODEL_FILE_SIZE
 _LOCK = threading.RLock()
 _INFERENCE_LOCK = threading.Lock()
+_DOWNLOAD_LOCK = threading.Lock()
 _MODEL = None
 _TOKEN_RE = re.compile(r"\{[^{}]+\}|\$\{[^{}]+\}|\$[A-Za-z_][A-Za-z0-9_]*|%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[a-zA-Z%]|\[[A-Za-z0-9_.:-]+\]|<[^>]+>|\\[nrt]|\\u[0-9a-fA-F]{4}")
 
@@ -88,6 +89,12 @@ def model_status() -> dict:
 
 
 def install_english_turkish_model(progress=None) -> None:
+    """Serialize model downloads so two windows cannot corrupt the shared partial file."""
+    with _DOWNLOAD_LOCK:
+        _install_english_turkish_model_locked(progress)
+
+
+def _install_english_turkish_model_locked(progress=None) -> None:
     """Download and verify Tencent's official Hy-MT2 1.8B Q4_K_M translation model."""
     if model_status()["installed"]:
         return
@@ -155,7 +162,7 @@ def install_english_turkish_model(progress=None) -> None:
 def uninstall_english_turkish_model() -> bool:
     """Unload and remove model weights and any incomplete download only."""
     global _MODEL
-    with _INFERENCE_LOCK, _LOCK:
+    with _DOWNLOAD_LOCK, _INFERENCE_LOCK, _LOCK:
         if _MODEL is not None:
             close = getattr(_MODEL, "close", None)
             try:
