@@ -259,6 +259,7 @@ _LANGUAGE_FILE = re.compile(
 _LOCALE_DIRS = {"locale", "locales", "lang", "langs", "language", "languages", "localization", "translations", "text"}
 
 def _detect_language_files(game_root: Path) -> tuple[str, ...]:
+    """Detect locales only from supported text files and recognizable locale folders."""
     found: set[str] = set()
     scanned = 0
     visited_dirs = 0
@@ -268,28 +269,32 @@ def _detect_language_files(game_root: Path) -> tuple[str, ...]:
             if visited_dirs > 1500:
                 break
             rel = Path(current).relative_to(game_root)
-            if len(rel.parts) > 5:
-                dirs[:] = []
-                continue
-            dirs[:] = [d for d in dirs if d.casefold() not in {"engine", "plugins", "thirdparty", "redist", "redistributable", "crashreporter", "__pycache__"}]
+            dirs[:] = [
+                d for d in dirs
+                if d.casefold() not in {
+                    "engine", "plugins", "thirdparty", "redist", "redistributable",
+                    "crashreporter", "__pycache__",
+                }
+            ]
+            locale_context = any(part.casefold() in _LOCALE_DIRS for part in rel.parts)
             for part in rel.parts:
-                code = _LANGUAGE_CODES.get(part.casefold())
-                if code:
-                    found.add(code)
-            if rel.parts and not any(part.casefold() in _LOCALE_DIRS or part.casefold() in _LANGUAGE_CODES for part in rel.parts):
-                continue
+                token = part.casefold()
+                if locale_context or len(token) > 3 or re.fullmatch(r"[a-z]{2,3}[-_][a-z]{2,4}", token):
+                    code = _LANGUAGE_CODES.get(token.replace("_", "-"))
+                    if code:
+                        found.add(code)
             for filename in files:
                 scanned += 1
                 if scanned > 5000:
                     return tuple(sorted(found))
-                if Path(filename).suffix.casefold() not in {".json", ".csv", ".txt", ".ini", ".po", ".xml", ".locres"}:
+                if Path(filename).suffix.casefold() not in {".json", ".csv", ".txt", ".ini"}:
                     continue
                 match = _LANGUAGE_FILE.search(Path(filename).stem)
                 if match:
-                    code = _LANGUAGE_CODES.get(match.group(1).casefold())
+                    code = _LANGUAGE_CODES.get(match.group(1).casefold().replace("_", "-"))
                     if code:
                         found.add(code)
-    except (OSError, ValueError):
+    except (OSError, ValueError, RuntimeError):
         pass
     return tuple(sorted(found))
 
