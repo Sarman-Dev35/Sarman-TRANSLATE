@@ -300,6 +300,8 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                 indent = indent_match.group(1) if indent_match else None
                 ensure_ascii = bool(re.search(r"\\u[0-9a-fA-F]{4}", raw)) and not any(ord(ch) > 127 for ch in raw)
                 encoded = json.dumps(data, ensure_ascii=ensure_ascii, indent=indent)
+                if newline != "\n":
+                    encoded = encoded.replace("\n", newline)
                 if raw.endswith(("\n", "\r")):
                     encoded += newline
             elif suffix == ".csv":
