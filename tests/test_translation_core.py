@@ -173,5 +173,32 @@ class PatchManagerTests(unittest.TestCase):
                 self.assertEqual(target.read_text(encoding="utf-8"), "original")
 
 
+    def test_json_keys_with_dots_slashes_and_brackets_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "special.json"
+            original = {"menu.title": "Start", "path/key": "Load", "array[0]": ["Exit"], "tilde~key": "Options"}
+            source.write_text(json.dumps(original), encoding="utf-8")
+            entries = scan_game_texts(root)
+            translations = {"Start": "Başla", "Load": "Yükle", "Exit": "Çıkış", "Options": "Seçenekler"}
+            for item in entries:
+                item.translated = translations[item.source]
+            output = json.loads(build_translated_files(root, entries)["special.json"].decode("utf-8"))
+            self.assertEqual(output["menu.title"], "Başla")
+            self.assertEqual(output["path/key"], "Yükle")
+            self.assertEqual(output["array[0]"], ["Çıkış"])
+            self.assertEqual(output["tilde~key"], "Seçenekler")
+
+    def test_csv_locale_headers_select_english_column_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "locale.csv"
+            source.write_text("key,en-US,fr-FR\\nstart,Start,Démarrer\\n", encoding="utf-8")
+            entries = scan_game_texts(root)
+            self.assertEqual([item.source for item in entries], ["Start"])
+            entries[0].translated = "Başla"
+            output = build_translated_files(root, entries)["locale.csv"].decode("utf-8")
+            self.assertIn("start,Başla,Démarrer", output)
+
 if __name__ == "__main__":
     unittest.main()
