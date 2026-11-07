@@ -76,6 +76,35 @@ def _cache_put(source: str, translated: str) -> None:
                    (hashlib.sha256(source.encode("utf-8")).hexdigest(), source, translated))
 
 
+DEFAULT_GLOSSARY = {
+    "New Game": "Yeni Oyun", "Load Game": "Oyunu Yükle", "Save Game": "Oyunu Kaydet",
+    "Continue": "Devam Et", "Game Over": "Oyun Bitti", "Main Menu": "Ana Menü",
+    "Options": "Ayarlar", "Settings": "Ayarlar", "Quit Game": "Oyundan Çık",
+    "Press any key": "Bir tuşa bas", "Press any button": "Bir düğmeye bas",
+    "Inventory": "Envanter", "Quest": "Görev", "Side Quest": "Yan Görev",
+    "Skill Tree": "Yetenek Ağacı", "Level Up": "Seviye Atladın",
+    "Checkpoint": "Kontrol Noktası", "Respawn": "Yeniden Doğ",
+    "Boss": "Boss", "Boss Fight": "Boss Savaşı", "Health": "Can",
+    "Stamina": "Dayanıklılık", "Mana": "Mana", "Achievement": "Başarım",
+    "Achievements": "Başarımlar", "You Died": "Öldün", "Try Again": "Tekrar Dene",
+    "Are you sure?": "Emin misin?", "Start": "Başlat", "Resume": "Devam Et",
+    "Exit to Desktop": "Masaüstüne Çık"
+}
+
+
+def _glossary_terms():
+    terms = dict(DEFAULT_GLOSSARY)
+    path = APP_DATA / "glossary.json"
+    try:
+        import json
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            terms.update({str(k): str(v) for k, v in data.items() if str(k).strip() and str(v).strip()})
+    except (OSError, ValueError, TypeError):
+        pass
+    return terms
+
+
 def translate_text(text: str) -> str:
     """Translate one English string offline; cache hits never invoke the model."""
     if not isinstance(text, str) or not text.strip():
@@ -92,6 +121,13 @@ def translate_text(text: str) -> str:
         if translator is None:
             raise LocalTranslationError("İngilizce → Türkçe modeli kurulu değil. Önce Yerel Model bölümünden indir.")
         tokens = []
+        # Protect approved game terminology first so the model cannot mistranslate it.
+        glossary = sorted(_glossary_terms().items(), key=lambda item: len(item[0]), reverse=True)
+        for source_term, target_term in glossary:
+            if re.search(r"(?<!\\w)" + re.escape(source_term) + r"(?!\\w)", text, re.IGNORECASE):
+                marker = f" SARMANTERM{len(tokens):04d}X "
+                text = re.sub(r"(?<!\\w)" + re.escape(source_term) + r"(?!\\w)", lambda _m, v=marker: v, text, flags=re.IGNORECASE)
+                tokens.append((marker, target_term))
         def protect(match):
             token = f" SARMANPH{len(tokens):04d}X "
             tokens.append((token, match.group(0)))
