@@ -68,9 +68,12 @@ def _cache_get(source: str) -> str | None:
     path = _cache_path()
     if not path.exists():
         return None
-    with sqlite3.connect(path, timeout=5) as db:
-        row = db.execute("SELECT translated FROM memory WHERE source_hash=?", (_cache_key(source),)).fetchone()
-        return row[0] if row else None
+    try:
+        with sqlite3.connect(path, timeout=5) as db:
+            row = db.execute("SELECT translated FROM memory WHERE source_hash=?", (_cache_key(source),)).fetchone()
+            return row[0] if row else None
+    except sqlite3.OperationalError:
+        return None
 
 
 def _cache_put(source: str, translated: str) -> None:
@@ -142,7 +145,10 @@ def translate_text(text: str) -> str:
         protected = _TOKEN_RE.sub(protect, text)
         result = translator.translate(protected)
         for token, original in tokens:
-            result = result.replace(token.strip(), original).replace(token, original)
+            marker = token.strip()
+            if marker not in result:
+                raise LocalTranslationError("Model bir oyun terimi/yer tutucuyu koruyamadı; bu metin güvenli biçimde çevrilmedi.")
+            result = result.replace(marker, original).replace(token, original)
         issues = validate_translation(original_text, result)
         if issues:
             raise LocalTranslationError("Model çevirisi oyun değişkenlerini/biçimini koruyamadı: " + " ".join(issues))
