@@ -329,10 +329,11 @@ class TranslationStudio(QDialog):
     def refresh_model_status(self):
         info = model_status()
         self.model_status_label.setText(info["message"] + "  ·  İlk kurulum internet gerektirir; sonrasında çevrimdışı çalışır.")
-        self.model_btn.setVisible(not info["installed"] and not info.get("present", False))
-        self.model_btn.setEnabled(not info["installed"] and not info.get("present", False))
-        self.remove_model_btn.setVisible(info.get("present", False))
-        self.remove_model_btn.setEnabled(info.get("present", False) and not (self.worker and self.worker.isRunning()))
+        self.model_btn.setVisible(not info["installed"])
+        self.model_btn.setEnabled(not info["installed"] and not (self.worker and self.worker.isRunning()))
+        has_model_files = info.get("present", False) or info.get("partial_present", False)
+        self.remove_model_btn.setVisible(has_model_files)
+        self.remove_model_btn.setEnabled(has_model_files and not (self.worker and self.worker.isRunning()))
         self.translate_btn.setEnabled(info["installed"] and bool(self.entries))
 
     def install_model(self):
@@ -360,7 +361,7 @@ class TranslationStudio(QDialog):
             QMessageBox.information(self, "Çeviri sürüyor", "Model kullanımdayken kaldırılamaz. Çevirinin tamamlanmasını bekle.")
             return
         info = model_status()
-        if not info.get("present", False):
+        if not (info.get("present", False) or info.get("partial_present", False)):
             self.refresh_model_status()
             return
         answer = QMessageBox.question(
@@ -381,6 +382,7 @@ class TranslationStudio(QDialog):
     def _model_install_failed(self, message):
         self.status.setText("Model kurulumu başarısız.")
         self.model_btn.setEnabled(True)
+        self.refresh_model_status()
         QMessageBox.warning(self, "Çeviri modeli", message)
 
     def translate_pending(self):
