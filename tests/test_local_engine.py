@@ -108,6 +108,25 @@ class LocalEngineTests(unittest.TestCase):
     def test_download_uses_large_buffer(self):
         self.assertEqual(local_engine.DOWNLOAD_CHUNK_SIZE, 4 * 1024 * 1024)
 
+    def test_translation_memory_writes_are_serialized_across_threads(self):
+        import threading
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(local_engine, "APP_DATA", Path(tmp)):
+            errors = []
+            def write(index):
+                try:
+                    local_engine._cache_put(f"source-{index}", f"çeviri-{index}")
+                except Exception as exc:
+                    errors.append(exc)
+            threads = [threading.Thread(target=write, args=(index,)) for index in range(16)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=10)
+            self.assertFalse(errors)
+            for index in range(16):
+                self.assertEqual(local_engine._cache_get(f"source-{index}"), f"çeviri-{index}")
+
     def test_empty_text_is_unchanged(self):
         self.assertEqual(local_engine.translate_text("  "), "  ")
 
