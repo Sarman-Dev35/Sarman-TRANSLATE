@@ -5,7 +5,7 @@ import sys
 from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QMainWindow, QMessageBox, QPushButton, QProgressBar, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QTabWidget
 )
@@ -328,7 +328,6 @@ class MainWindow(QMainWindow):
         self.library_status.setText("Tarama sırasında hata oluştu")
         QMessageBox.warning(self, APP_NAME, message)
         self.scan_btn.setEnabled(True)
-        self.add_folder_btn.setEnabled(True)
         self.scan_btn.setText("⟳   Yeniden tara")
 
     def render_games(self):
@@ -409,6 +408,7 @@ class MainWindow(QMainWindow):
             return
         try:
             result = install_patch(self.patch_path, game.path)
+            self.render_games()
             QMessageBox.information(self, APP_NAME, f"{result['name']} yüklendi.\nYedek: {result['backup']}")
         except (PatchError, OSError) as exc:
             QMessageBox.critical(self, APP_NAME, f"Yama yüklenemedi:\n{exc}")
@@ -425,6 +425,7 @@ class MainWindow(QMainWindow):
             return
         try:
             name = uninstall_latest(game.path)
+            self.render_games()
             QMessageBox.information(self, APP_NAME, f"{name} geri alındı.")
         except (PatchError, OSError) as exc:
             QMessageBox.warning(self, APP_NAME, str(exc))
