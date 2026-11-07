@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
-SUPPORTED = {".json", ".csv", ".ini", ".po", ".txt"}
+SUPPORTED = {".json", ".csv", ".txt"}
 SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "binaries", "bin", "cache", "caches", "logs", "crashdumps"}
 MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_FILES = 5000
@@ -98,23 +98,6 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
                             if ci < len(row):
                                 item = _entry(file, root, f"row[{ri}].col[{ci}]", row[ci])
                                 if item: found.append(item)
-            elif suffix == ".ini":
-                parser = configparser.ConfigParser(interpolation=None, strict=False)
-                parser.read_string(text)
-                for section in parser.sections():
-                    for key, value in parser.items(section):
-                        item = _entry(file, root, f"{section}.{key}", value)
-                        if item: found.append(item)
-            elif suffix == ".po":
-                # Extract msgid entries; source line index is used for safe exact replacement.
-                lines = text.splitlines()
-                current = None
-                for i, line in enumerate(lines):
-                    match = re.match(r'\s*msgid\s+"(.*)"\s*$', line)
-                    if match and match.group(1):
-                        current = (i, bytes(match.group(1), "utf-8").decode("unicode_escape"))
-                        item = _entry(file, root, f"line[{i}]", current[1])
-                        if item: found.append(item)
             elif suffix == ".txt" and include_txt:
                 for i, line in enumerate(text.splitlines()):
                     item = _entry(file, root, f"line[{i}]", line)
@@ -180,7 +163,9 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
             if suffix == ".json":
                 data = json.loads(raw)
                 for item in items:
-                    locator = item.locator
+                    locator = item.locator.removeprefix("root.")
+                    if locator == "root":
+                        continue
                     parts = re.findall(r"[^.\[\]]+|\[(\d+)\]", locator)
                     keys = []
                     for token in parts:
