@@ -1,8 +1,13 @@
 import unittest
 from PySide6.QtGui import QImage
+from PySide6.QtWidgets import QApplication
 from game_visuals import WARM_PALETTE, dominant_palette, make_placeholder_cover, palette_for_game, theme_stylesheet
 
 class GameVisualsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
     def test_adofai_uses_red_blue_palette(self):
         self.assertEqual(palette_for_game("A Dance of Fire and Ice"), ("#f04459", "#397ee8"))
         self.assertEqual(palette_for_game("ADOFAI"), ("#f04459", "#397ee8"))
