@@ -34,7 +34,7 @@ class TextEntry:
 
 def _is_translatable(value: str) -> bool:
     value = value.strip()
-    if len(value) < 2 or not any(ch.isalpha() for ch in value):
+    if len(value) < 2 or len(value) > 5000 or not any(ch.isalpha() for ch in value):
         return False
     if value.startswith(("http://", "https://", "www.", "GUID:", "0x")):
         return False
