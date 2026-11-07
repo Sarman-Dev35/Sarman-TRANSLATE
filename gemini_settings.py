@@ -70,7 +70,10 @@ class GeminiSettingsDialog(QDialog):
         save_btn.clicked.connect(self.save_key)
         test_btn = QPushButton("Bağlantıyı test et")
         test_btn.clicked.connect(self.test_key)
+        delete_btn = QPushButton("Anahtarı sil")
+        delete_btn.clicked.connect(self.delete_key)
         actions.addWidget(open_btn)
+        actions.addWidget(delete_btn)
         actions.addStretch()
         actions.addWidget(save_btn)
         actions.addWidget(test_btn)
@@ -79,6 +82,7 @@ class GeminiSettingsDialog(QDialog):
         root.addWidget(QLabel("Kullanılabilir Gemini modeli"))
         self.model_combo = QComboBox()
         self.model_combo.addItem("Bağlantı testi sonrası modeller yüklenecek")
+        self.model_combo.currentIndexChanged.connect(self.save_model_choice)
         root.addWidget(self.model_combo)
         self.api_status = QLabel("API anahtarı eklenmedi.")
         self.api_status.setObjectName("status")
@@ -124,10 +128,32 @@ class GeminiSettingsDialog(QDialog):
             return
         try:
             keyring.set_password(SERVICE, "user-api-key", value)
+            self.save_model_choice()
             self.api_status.setText("API anahtarı Windows kimlik bilgisi kasasına kaydedildi.")
             QMessageBox.information(self, "Gemini API", "API anahtarı güvenli yerel kasaya kaydedildi.")
         except Exception as exc:
             QMessageBox.critical(self, "Gemini API", f"Anahtar güvenli biçimde kaydedilemedi: {exc}")
+
+    def delete_key(self):
+        answer = QMessageBox.question(self, "API anahtarı silinsin mi?", "Kayıtlı Gemini API anahtarı bu Windows kullanıcı hesabının kimlik bilgisi kasasından silinecek.", QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            keyring.delete_password(SERVICE, "user-api-key")
+            self.key_input.clear()
+            self.api_status.setText("Kayıtlı API anahtarı silindi.")
+        except keyring.errors.PasswordDeleteError:
+            self.api_status.setText("Silinecek kayıtlı API anahtarı bulunamadı.")
+        except Exception as exc:
+            QMessageBox.warning(self, "Gemini API", f"Anahtar silinemedi: {exc}")
+
+    def save_model_choice(self):
+        model = self.model_combo.currentData()
+        if model:
+            try:
+                keyring.set_password(SERVICE, "model", str(model))
+            except Exception:
+                pass
 
     def test_key(self):
         value = self.key_input.text().strip()
@@ -152,7 +178,8 @@ class GeminiSettingsDialog(QDialog):
             preferred = self.model_combo.findData("gemini-2.5-flash")
             if preferred >= 0:
                 self.model_combo.setCurrentIndex(preferred)
-            self.api_status.setText(f"Bağlantı başarılı. {len(models)} metin üretimi destekleyen model listelendi. Anahtarı ayrıca kaydetmeyi unutma.")
+            self.save_model_choice()
+            self.api_status.setText(f"Bağlantı başarılı. {len(models)} metin üretimi destekleyen model listelendi. Model tercihi yerel olarak kaydedildi. Ücretsiz kullanım ve limitler Google hesabı/projesine göre değişir.")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")[:500]
             self.api_status.setText(f"Google API yanıtı: HTTP {exc.code}. {detail}")
