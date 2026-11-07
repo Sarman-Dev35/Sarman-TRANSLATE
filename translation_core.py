@@ -154,3 +154,99 @@ def load_workspace(path: str | Path) -> dict:
     if data.get("version") != 1 or not isinstance(data.get("entries"), list):
         raise ValueError("Çeviri çalışma dosyası desteklenmiyor veya bozuk.")
     return data
+
+
+def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -> dict[str, bytes]:
+    """Return modified copies for supported round-trip formats; never writes to the game directory."""
+    import io
+    from collections import defaultdict
+
+    root = Path(game_dir).resolve()
+    grouped = defaultdict(list)
+    for entry in entries:
+        if entry.translated.strip() and not validate_translation(entry.source, entry.translated):
+            grouped[entry.file].append(entry)
+    output: dict[str, bytes] = {}
+    for relative, items in grouped.items():
+        source_path = (root / _safe_workspace_path(relative)).resolve()
+        if root not in source_path.parents or not source_path.is_file():
+            continue
+        try:
+            raw = source_path.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeError):
+            continue
+        suffix = source_path.suffix.casefold()
+        try:
+            if suffix == ".json":
+                data = json.loads(raw)
+                for item in items:
+                    locator = item.locator
+                    parts = re.findall(r"[^.\[\]]+|\[(\d+)\]", locator)
+                    keys = []
+                    for token in parts:
+                        token = token[0] if isinstance(token, tuple) else token
+                        if token:
+                            keys.append(int(token) if token.isdigit() else token)
+                    node = data
+                    for key in keys[:-1]:
+                        node = node[key]
+                    if keys:
+                        node[keys[-1]] = item.translated
+                encoded = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+            elif suffix == ".csv":
+                rows = list(csv.reader(io.StringIO(raw, newline="")))
+                for item in items:
+                    match = re.fullmatch(r"row\[(\d+)\]\.col\[(\d+)\]", item.locator)
+                    if match:
+                        ri, ci = map(int, match.groups())
+                        if ri < len(rows) and ci < len(rows[ri]):
+                            rows[ri][ci] = item.translated
+                buffer = io.StringIO(newline="")
+                csv.writer(buffer, lineterminator="\n").writerows(rows)
+                encoded = buffer.getvalue()
+            elif suffix == ".txt":
+                lines = raw.splitlines()
+                for item in items:
+                    match = re.fullmatch(r"line\[(\d+)\]", item.locator)
+                    if match and int(match.group(1)) < len(lines):
+                        lines[int(match.group(1))] = item.translated
+                encoded = "\n".join(lines) + ("\n" if raw.endswith(("\n", "\r")) else "")
+            else:
+                continue
+            output[relative] = encoded.encode("utf-8")
+        except (ValueError, KeyError, IndexError, TypeError, csv.Error):
+            continue
+    return output
+
+
+def _safe_workspace_path(value: str) -> Path:
+    candidate = Path(value)
+    if candidate.is_absolute() or any(part in ("..", "") for part in candidate.parts):
+        raise ValueError("Çalışma dosyasında güvenli olmayan hedef yolu.")
+    return candidate
+
+
+def create_translation_patch(game_dir: str | Path, entries: Iterable[TextEntry], destination: str | Path, game_name: str) -> Path:
+    import zipfile
+    from datetime import datetime, timezone
+
+    files = build_translated_files(game_dir, entries)
+    if not files:
+        raise ValueError("Desteklenen biçimlerde dışa aktarılabilir çevrilmiş dosya bulunamadı.")
+    manifest_files = []
+    for relative in sorted(files):
+        manifest_files.append({"source": f"files/{relative}", "target": relative})
+    manifest = {
+        "name": f"{game_name} - Türkçe",
+        "version": "1.0.0",
+        "language": "tr",
+        "created_utc": datetime.now(timezone.utc).isoformat(),
+        "files": manifest_files,
+    }
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(destination, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+        archive.writestr("sarman-patch.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+        for relative, content in files.items():
+            archive.writestr(f"files/{relative}", content)
+    return destination
