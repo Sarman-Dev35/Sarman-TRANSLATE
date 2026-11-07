@@ -14,8 +14,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QTabWidget
 )
 
-from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest, installed_patch_languages
-from gemini_settings import GeminiSettingsDialog
+from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest, uninstall_all, installed_patch_languages
 from translation_studio import TranslationStudio
 
 APP_NAME = "Sarman TRANSLATE"
@@ -123,16 +122,12 @@ class MainWindow(QMainWindow):
         side.addWidget(nav_title)
         self.nav_library = QPushButton("▦   Oyun kütüphanesi")
         self.nav_patch = QPushButton("⇧   Yama merkezi")
-        self.nav_settings = QPushButton("⚙   Gemini API")
         self.nav_library.setObjectName("navActive")
         self.nav_patch.setObjectName("navButton")
-        self.nav_settings.setObjectName("navButton")
         self.nav_library.clicked.connect(lambda: self.pages.setCurrentIndex(0))
         self.nav_patch.clicked.connect(lambda: self.pages.setCurrentIndex(1))
-        self.nav_settings.clicked.connect(self.open_gemini_settings)
         side.addWidget(self.nav_library)
         side.addWidget(self.nav_patch)
-        side.addWidget(self.nav_settings)
         side.addStretch()
         version = QLabel("DESKTOP  ·  ÖN SÜRÜM\nYerelleştirme araçları")
         version.setObjectName("sideFoot")
@@ -275,8 +270,11 @@ class MainWindow(QMainWindow):
         self.install_btn.clicked.connect(self.apply_patch)
         self.uninstall_btn = QPushButton("Son yamayı geri al")
         self.uninstall_btn.clicked.connect(self.rollback_patch)
+        self.uninstall_all_btn = QPushButton("Tüm yamaları kaldır")
+        self.uninstall_all_btn.clicked.connect(self.remove_all_patches)
         actions.addWidget(self.install_btn)
         actions.addWidget(self.uninstall_btn)
+        actions.addWidget(self.uninstall_all_btn)
         actions.addStretch()
         tl.addLayout(actions)
         patch_layout.addWidget(target)
@@ -325,10 +323,6 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         event.accept()
-
-    def open_gemini_settings(self):
-        dialog = GeminiSettingsDialog(self)
-        dialog.exec()
 
     def page_changed(self, index):
         is_patch = index == 1
@@ -455,6 +449,27 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, APP_NAME, f"{result['name']} yüklendi.\nYedek: {result['backup']}")
         except (PatchError, OSError) as exc:
             QMessageBox.critical(self, APP_NAME, f"Yama yüklenemedi:\n{exc}")
+
+    def remove_all_patches(self):
+        game = self.selected_game()
+        if not game:
+            QMessageBox.information(self, APP_NAME, "Önce oyun listesinden bir oyun seç.")
+            return
+        answer = QMessageBox.question(
+            self, "Tüm Sarman yamaları kaldırılsın mı?",
+            f"'{game.name}' için Sarman TRANSLATE tarafından yüklenen tüm yamalar geri alınacak. "
+            "Orijinal dosyalar yedeklerden geri yüklenir. Bu işlem başka modları kaldırmaz. Devam edilsin mi?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            names = uninstall_all(game.path)
+            self.render_games()
+            QMessageBox.information(self, APP_NAME,
+                f"{len(names)} yama kaldırıldı." if names else "Bu oyun için kayıtlı Sarman yaması bulunamadı.")
+        except (PatchError, OSError) as exc:
+            QMessageBox.warning(self, APP_NAME, f"Yama kaldırma durdu. Dosyalar ve yedek kayıtları korundu.\n\n{exc}")
 
     def rollback_patch(self):
         game = self.selected_game()
