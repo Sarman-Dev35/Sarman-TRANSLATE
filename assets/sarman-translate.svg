@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="copper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f3b27c"/>
+      <stop offset=".52" stop-color="#e58a43"/>
+      <stop offset="1" stop-color="#c96632"/>
+    </linearGradient>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#191a1f"/>
+      <stop offset="1" stop-color="#0c0d10"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="url(#surface)" stroke="#383238" stroke-width="2"/>
+  <path d="M176 76 C158 58 126 53 101 60 C75 67 63 84 67 103 C71 122 89 132 119 141 L148 149 C176 157 188 172 181 190 C174 210 148 220 120 216 C100 214 84 205 74 192"
+        fill="none" stroke="url(#copper)" stroke-width="25" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M176 76 L190 65" fill="none" stroke="#f5c49b" stroke-width="5" stroke-linecap="round" opacity=".75"/>
+</svg>
