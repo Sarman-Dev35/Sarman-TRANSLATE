@@ -67,7 +67,9 @@ def model_status() -> dict:
         present = False
         partial_present = False
         installed = False
+    state = "installed" if installed else "partial" if partial_present else "corrupt" if present else "missing"
     return {
+        "state": state,
         "installed": installed,
         "present": present,
         "partial_present": partial_present,
