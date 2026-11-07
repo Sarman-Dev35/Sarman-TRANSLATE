@@ -2,7 +2,7 @@ name: Translation MVP Tests
 
 on:
   push:
-    branches: [feature/complete-translation-mvp]
+    branches: [main, feature/complete-translation-mvp]
   workflow_dispatch:
 
 permissions:
