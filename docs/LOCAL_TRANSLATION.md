@@ -1,23 +1,30 @@
-# Yerel yapay zekâ çeviri motoru
+# Yerel oyun çeviri motoru
 
-Sarman TRANSLATE, Qwen3 4B Instruct modelinin Q4_K_M GGUF kuantizasyonunu `llama.cpp` üzerinden yerel olarak çalıştırır. Model dosyası yaklaşık 2,5 GB'tır ve `%LOCALAPPDATA%\Sarman\TRANSLATE\models` içine indirilir. İlk indirme internet gerektirir; sonrasında metin çevirisi yerel bilgisayarda ve çevrimdışı yapılır.
+Sarman TRANSLATE, Tencent'in yalnızca çok dilli çeviri için tasarladığı Hy-MT2 1.8B modelini Q4_K_M GGUF biçiminde `llama.cpp` üzerinden yerel olarak çalıştırır. Model dosyası 1.133.080.448 bayttır (yaklaşık 1,13 GB) ve `%LOCALAPPDATA%\\Sarman\\TRANSLATE\\models` içine indirilir. İlk indirme internet gerektirir; kurulumdan sonra çeviri tamamen çevrimdışı yapılır.
+
+## Neden Hy-MT2?
+
+- Sohbet veya genel amaçlı asistan modeli değildir; doğrudan çeviri görevlerine odaklanır.
+- Türkçe dahil 33 dili destekler. Bu uygulamanın ilk hedefi İngilizce → Türkçe oyun metinleridir.
+- Model, yalnızca çeviri talimatı ve metin alır; sohbet arayüzü veya sohbet geçmişi yoktur.
+- Q4_K_M dosyası yaklaşık 1,13 GB'tır; önceki Qwen3 4B Q4_K_M dosyasından belirgin biçimde küçüktür.
 
 ## Çeviri yaklaşımı
 
-- Model İngilizceden Türkçeye doğal oyun yerelleştirmesi yapması için yönlendirilir.
-- Aynı dosyadaki yakın metin satırları bağlam olarak modele verilir. Bu, çok anlamlı kelimelerin, karakter seslerinin, deyimlerin ve kelime oyunlarının daha doğru yorumlanmasına yardımcı olur.
-- Yerleşik oyun terimleri sözlüğü ve kullanıcı sözlüğü terimleri sabitler. Kullanıcı karşılıkları `%LOCALAPPDATA%\Sarman\TRANSLATE\glossary.json` içinde saklanır.
+- Aynı oyun dosyasındaki yakın satırlar ve oyun adı, belirsiz kelimeleri yorumlamak için bağlam olarak verilir.
+- Yerleşik ve kullanıcı tarafından düzenlenebilir terim sözlüğü, oyun terimlerinin tutarlı kalmasını sağlar.
 - `{player}`, `%s`, `[TAG]`, HTML benzeri etiketler ve kaçış dizileri modelden önce korunur. Model bunları değiştirdiyse çeviri güvenli kabul edilmez.
-- Aynı kaynak, bağlam ve sözlük sürümü SQLite çeviri hafızasında saklanır.
+- Aynı kaynak metin, bağlam, oyun adı ve sözlük sürümü SQLite çeviri hafızasında tutulur. Tekrar eden metinler yeniden üretilmeden anında kullanılır.
+- Model dosyası oyun dosyalarına veya EXE'ye gömülmez.
 
-## Donanım ve performans
+## Performans
 
-İlk entegrasyon CPU üzerinde çalışır; CUDA kurulumuna ihtiyaç duymaz. 4B parametreli model ve 4096 token bağlamı için yeterli RAM gerekir. 16 GB RAM sistemlerde çalışması hedeflenir ancak hız işlemciye ve metin uzunluğuna bağlıdır. Model oyun dosyalarına gömülmez ve EXE içine paketlenmez.
+İlk sürüm llama.cpp CPU çıkarımı kullanır ve CUDA kurulumu gerektirmez. Daha küçük model dosyası daha az depolama ve genellikle daha düşük bellek ihtiyacı sağlar; gerçek çeviri hızı işlemciye, metin uzunluğuna ve oyun dosyasındaki benzersiz satır sayısına bağlıdır. Bu nedenle belirli bir oyunun binlerce satırının saniyeler içinde biteceği garanti edilmez. Önbellek, yinelenen metinlerin tekrar çevrilmesini önler.
 
 ## Model ve lisans
 
-Ağırlıklar ilk kurulumda doğrudan resmi Qwen Hugging Face deposundan indirilir: `Qwen/Qwen3-4B-GGUF`. Bu model Apache 2.0 lisanslıdır. Sarman TRANSLATE model ağırlıklarını yeniden dağıtmaz; kullanıcı kendi bilgisayarına indirir. Modelin kendi lisans ve atıf dosyası kaynak depoda incelenebilir.
+Model ağırlıkları ilk kurulumda doğrudan Tencent'in resmi Hugging Face deposundan indirilir: `tencent/Hy-MT2-1.8B-GGUF`. Model deposu Apache-2.0 lisansını belirtir. Sarman TRANSLATE model ağırlıklarını yeniden dağıtmaz; kullanıcı kendi bilgisayarına indirir. Dosyanın SHA-256 özeti indirme sonunda doğrulanır.
 
 ## Sınırlar
 
-Bu model otomatik yerelleştirme yardımcısıdır; profesyonel insan editörün yerini garantiyle almaz. Özellikle mizah, kültürel göndermeler, karakter adları ve hikâye bağlamı son kontrolden geçirilmelidir. İlk sürüm İngilizce → Türkçe çiftini destekler.
+Bu model otomatik oyun yerelleştirme aracıdır; profesyonel insan editörün yerini garantiyle almaz. Özellikle karakter sesleri, hikâye göndermeleri ve kelime oyunları oyun bağlamına göre kontrol edilmelidir. İlk entegrasyon İngilizce → Türkçe akışını hedefler.
