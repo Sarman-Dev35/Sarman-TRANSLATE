@@ -135,7 +135,6 @@ class TranslationStudio(QDialog):
         self.model_status_label = QLabel("")
         self.model_status_label.setStyleSheet("color:#b9a18d;padding:4px;")
         root.addWidget(self.model_status_label)
-        self.refresh_model_status()
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["DURUM", "DOSYA / KONUM", "KAYNAK METİN", "TÜRKÇE ÇEVİRİ"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -331,22 +330,6 @@ class TranslationStudio(QDialog):
     def _translation_progress(self, completed, total, current_text):
         self.progress.setValue(completed)
         self.status.setText(f"{completed}/{total} çevrildi · {current_text}")
-
-    def _quota_paused(self, message):
-        self._set_busy(False)
-        self.autosave_timer.stop()
-        self.save()
-        if message == "TEST_QUOTA_SIMULATION":
-            self.status.setText("TEST MODU — Çeviri API isteği gönderilmeden duraklatıldı. Çalışma kaydedildi.")
-            QMessageBox.information(
-                self, "Kota duraklatma testi",
-                "Test başarılı: çeviri kuyruğu güvenli biçimde duraklatıldı ve çalışma kaydedildi. "
-                "Bu test Gemini API'ye istek göndermedi, gerçek kotanı tüketmedi. "
-                "Bekleme süresi sona erdiğinde 'Bekleyenleri çevir' düğmesiyle devam edebilirsin."
-            )
-            return
-        self.status.setText("Kota nedeniyle duraklatıldı. Tamamlanan çeviriler kaydedildi.")
-        QMessageBox.warning(self, "Gemini kotası", "API isteği kota sınırına takıldı. İlerleme kaydedildi. Google API erişimi tekrar kullanılabilir olduğunda veya farklı bir projeye ait uygun anahtar eklediğinde bekleyenleri sürdürebilirsin.\n\n" + message)
 
     def _translation_failed(self, message):
         self._set_busy(False)
