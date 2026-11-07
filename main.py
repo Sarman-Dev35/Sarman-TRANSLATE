@@ -101,11 +101,24 @@ def scan_common_folders() -> list[Game]:
             continue
         try:
             for child in base.iterdir():
-                if child.is_dir() and child.name.casefold() not in skip:
-                    key = str(child.resolve()).casefold()
-                    if key not in seen:
-                        seen.add(key)
-                        found.append(Game(child.name, "Klasör taraması", str(child)))
+                if not child.is_dir() or child.name.casefold() in skip:
+                    continue
+                # Avoid presenting every application folder as a game: require
+                # at least one likely game executable in the install directory.
+                try:
+                    executables = [
+                        exe for exe in child.glob("*.exe")
+                        if not any(token in exe.name.casefold() for token in
+                                   ("unins", "uninstall", "setup", "redist", "crashreport"))
+                    ]
+                except OSError:
+                    continue
+                if not executables:
+                    continue
+                key = str(child.resolve()).casefold()
+                if key not in seen:
+                    seen.add(key)
+                    found.append(Game(child.name, "Oyun klasörü", str(child)))
         except (OSError, PermissionError):
             continue
     return found
