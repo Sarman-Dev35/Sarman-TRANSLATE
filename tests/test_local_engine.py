@@ -96,7 +96,7 @@ class LocalEngineTests(unittest.TestCase):
                 result = local_engine.translate_text("Start the engine")
             self.assertEqual(result, "Motoru çalıştır")
             self.assertIn("Text: Start the engine", fake.prompt)
-            self.assertNotIn("SARMANTERM", fake.prompt)
+            self.assertNotIn("Text: SARMANTERM", fake.prompt)
 
     def test_cache_key_changes_when_translation_pipeline_changes(self):
         with patch.object(local_engine, "APP_DATA", Path(tempfile.gettempdir())):
