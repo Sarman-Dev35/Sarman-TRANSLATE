@@ -34,7 +34,7 @@ Uygulama platform parolası istemez, istemci veritabanlarını kırmaz, lisans/D
 1. Oyun kütüphanesinde oyunu seç.
 2. **Çeviri Atölyesi** düğmesine bas.
 3. **Metinleri tara** ile desteklenen dosyaları keşfet.
-4. **Yerel modeli kur** ile İngilizce → Türkçe modelini bir kez indir.
+4. **Çeviri modelini indir** ile İngilizce → Türkçe modelini bir kez indir.
 5. **Bekleyenleri çevir** ile çevrimdışı çeviriyi başlat. Terim sözlüğünden oyuna özel karşılıklar ekleyebilirsin.
 6. Çevirileri tabloda elle düzenleyip gözden geçir.
 7. **Yama ZIP'i oluştur** ile dışa aktar.

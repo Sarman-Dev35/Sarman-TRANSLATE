@@ -179,6 +179,10 @@ class MainWindow(QMainWindow):
         self.studio_btn.setEnabled(False)
         self.studio_btn.clicked.connect(self.open_translation_studio)
         row.addWidget(self.studio_btn)
+        self.remove_game_patches_btn = QPushButton("Yamaları kaldır")
+        self.remove_game_patches_btn.setEnabled(False)
+        self.remove_game_patches_btn.clicked.connect(self.remove_all_patches)
+        row.addWidget(self.remove_game_patches_btn)
         lib.addLayout(row)
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["OYUN", "PLATFORM", "DİL / YAMA DURUMU"])
@@ -360,10 +364,12 @@ class MainWindow(QMainWindow):
             self.studio_btn.setEnabled(True)
             self.target_label.setText(f"{game.name}  ·  {game.path}")
             self.install_btn.setEnabled(bool(self.patch_path))
+            self.remove_game_patches_btn.setEnabled(bool(installed_patch_languages(game.path)))
         else:
             self.studio_btn.setEnabled(False)
             self.target_label.setText("Önce Oyun kütüphanesi bölümünden bir oyun seç.")
             self.install_btn.setEnabled(False)
+            self.remove_game_patches_btn.setEnabled(False)
 
     def open_translation_studio(self):
         game = self.selected_game()
@@ -428,6 +434,7 @@ class MainWindow(QMainWindow):
         try:
             names = uninstall_all(game.path)
             self.render_games()
+            self.selection_changed()
             QMessageBox.information(self, APP_NAME,
                 f"{len(names)} yama kaldırıldı." if names else "Bu oyun için kayıtlı Sarman yaması bulunamadı.")
         except (PatchError, OSError) as exc:

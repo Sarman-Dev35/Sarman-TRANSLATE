@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import gc
+import sys
 from contextlib import closing
 import json
 import os
@@ -13,8 +15,17 @@ from pathlib import Path
 from translation_core import validate_translation
 
 APP_DATA = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Sarman" / "TRANSLATE"
-MODEL_DIR = APP_DATA / "models"
 MODEL_NAME = "Hy-MT2-1.8B-Q4_K_M.gguf"
+
+
+def _model_directory() -> Path:
+    # Packaged builds keep the model beside the executable for portable management.
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return APP_DATA / "models"
+
+
+MODEL_DIR = _model_directory()
 MODEL_PATH = MODEL_DIR / MODEL_NAME
 MODEL_URL = "https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF/resolve/main/Hy-MT2-1.8B-Q4_K_M.gguf"
 MODEL_SHA256 = "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699"
@@ -46,14 +57,21 @@ DEFAULT_GLOSSARY = {
 
 
 def model_status() -> dict:
+    partial_path = MODEL_PATH.with_suffix(MODEL_PATH.suffix + ".part")
     try:
-        installed = MODEL_PATH.is_file() and MODEL_PATH.stat().st_size == MODEL_FILE_SIZE
+        present = MODEL_PATH.is_file()
+        partial_present = partial_path.is_file()
+        installed = present and MODEL_PATH.stat().st_size == MODEL_FILE_SIZE
     except OSError:
+        present = False
+        partial_present = False
         installed = False
     return {
         "installed": installed,
+        "present": present,
+        "partial_present": partial_present,
         "engine": "Tencent Hy-MT2 1.8B · GGUF Q4_K_M",
-        "message": "Hy-MT2 çeviri modeli hazır." if installed else "Hy-MT2 1.8B çeviri modeli henüz indirilmedi.",
+        "message": ("Hy-MT2 çeviri modeli hazır." if installed else "Eksik model indirmesi bulundu; kaldığı yerden sürdürülebilir." if partial_present else "Model dosyası eksik veya bozuk; yeniden indirilebilir." if present else "Hy-MT2 1.8B çeviri modeli henüz indirilmedi."),
         "model_path": str(MODEL_PATH),
         "download_size": "yaklaşık 1,13 GB",
     }
@@ -109,6 +127,32 @@ def install_english_turkish_model(progress=None) -> None:
     except Exception as exc:
         # Keep a partial file so the next attempt can resume with HTTP Range.
         raise LocalTranslationError(f"Hy-MT2 indirilemedi; indirme kaldığı yerden sürdürülebilir: {exc}") from exc
+
+
+def uninstall_english_turkish_model() -> bool:
+    """Unload and remove model weights and any incomplete download only."""
+    global _MODEL
+    with _LOCK:
+        if _MODEL is not None:
+            close = getattr(_MODEL, "close", None)
+            try:
+                if callable(close):
+                    close()
+            except Exception as exc:
+                raise LocalTranslationError(f"Model belleği güvenli biçimde kapatılamadı: {exc}") from exc
+            _MODEL = None
+            gc.collect()
+        removed = False
+        for path in (MODEL_PATH, MODEL_PATH.with_suffix(MODEL_PATH.suffix + ".part")):
+            try:
+                if path.is_file():
+                    path.unlink()
+                    removed = True
+            except OSError as exc:
+                raise LocalTranslationError(
+                    f"Model dosyası silinemedi: {path}\\nUygulamayı yazma izni olan bir klasörden çalıştırıp tekrar dene.\\n{exc}"
+                ) from exc
+        return removed
 
 
 def _cache_path() -> Path:

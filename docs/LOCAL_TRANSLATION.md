@@ -1,6 +1,6 @@
 # Yerel oyun çeviri motoru
 
-Sarman TRANSLATE, Tencent'in yalnızca çok dilli çeviri için tasarladığı Hy-MT2 1.8B modelini Q4_K_M GGUF biçiminde `llama.cpp` üzerinden yerel olarak çalıştırır. Model dosyası 1.133.080.448 bayttır (yaklaşık 1,13 GB) ve `%LOCALAPPDATA%\\Sarman\\TRANSLATE\\models` içine indirilir. İlk indirme internet gerektirir; kurulumdan sonra çeviri tamamen çevrimdışı yapılır.
+Sarman TRANSLATE, Tencent'in yalnızca çok dilli çeviri için tasarladığı Hy-MT2 1.8B modelini Q4_K_M GGUF biçiminde `llama.cpp` üzerinden yerel olarak çalıştırır. Model dosyası 1.133.080.448 bayttır (yaklaşık 1,13 GB). Paketlenmiş Windows uygulamasında model, `Sarman TRANSLATE.exe` dosyasının bulunduğu klasöre doğrudan indirilir; kaynak koddan çalıştırırken `%LOCALAPPDATA%\\Sarman\\TRANSLATE\\models` kullanılır. İlk indirme internet gerektirir; kurulumdan sonra çeviri tamamen çevrimdışı yapılır.
 
 ## Neden Hy-MT2?
 
@@ -21,7 +21,7 @@ Sarman TRANSLATE, Tencent'in yalnızca çok dilli çeviri için tasarladığı H
 
 İlk sürüm llama.cpp CPU çıkarımı kullanır ve CUDA kurulumu gerektirmez. Daha küçük model dosyası daha az depolama ve genellikle daha düşük bellek ihtiyacı sağlar; gerçek çeviri hızı işlemciye, metin uzunluğuna ve oyun dosyasındaki benzersiz satır sayısına bağlıdır. Bu nedenle belirli bir oyunun binlerce satırının saniyeler içinde biteceği garanti edilmez. Önbellek, yinelenen metinlerin tekrar çevrilmesini önler.
 
-## Model ve lisans
+## Model yönetimi\n\nÇeviri Atölyesi içindeki **Modeli cihazdan kaldır** düğmesi, model belleğini kapatır ve EXE yanındaki model dosyasını (varsa yarım indirme dosyasını da) siler. Terim sözlüğü, çeviri hafızası ve oyun çalışma dosyaları korunur. Model dosyasını EXE klasörüne yazabilmek için uygulamanın yazma izni olan bir klasörde bulunması gerekir.\n\n## Model ve lisans
 
 Model ağırlıkları ilk kurulumda doğrudan Tencent'in resmi Hugging Face deposundan indirilir: `tencent/Hy-MT2-1.8B-GGUF`. Model deposu Apache-2.0 lisansını belirtir. Sarman TRANSLATE model ağırlıklarını yeniden dağıtmaz; kullanıcı kendi bilgisayarına indirir. Dosyanın SHA-256 özeti indirme sonunda doğrulanır.
 
