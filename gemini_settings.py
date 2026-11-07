@@ -23,8 +23,8 @@ class ModelFetchWorker(QThread):
     completed = Signal(list)
     failed = Signal(str)
 
-    def __init__(self, api_key: str):
-        super().__init__()
+    def __init__(self, api_key: str, parent=None):
+        super().__init__(parent)
         self.api_key = api_key
 
     def run(self):
@@ -193,7 +193,7 @@ class GeminiSettingsDialog(QDialog):
             return
         self.api_status.setText("Google Gemini bağlantısı kontrol ediliyor…")
         self.test_btn.setEnabled(False)
-        self.model_worker = ModelFetchWorker(value)
+        self.model_worker = ModelFetchWorker(value, self)
         self.model_worker.completed.connect(self.models_loaded)
         self.model_worker.failed.connect(self.models_failed)
         self.model_worker.start()
@@ -216,6 +216,11 @@ class GeminiSettingsDialog(QDialog):
     def models_failed(self, message):
         self.api_status.setText(message)
         self.test_btn.setEnabled(True)
+
+    def closeEvent(self, event):
+        if self.model_worker and self.model_worker.isRunning():
+            self.model_worker.wait(16000)
+        event.accept()
 
     def run_test_command(self):
         command = self.command_input.text().strip().casefold()
