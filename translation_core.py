@@ -276,7 +276,7 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                         # Backward compatibility for older workspace locator format.
                         locator = item.locator.removeprefix("root").lstrip(".")
                         if not locator:
-                            continue
+                            raise StaleSourceError(f"{relative}: kayıtlı JSON konumu geçersiz. Metinleri yeniden tara.")
                         keys = []
                         token = ""
                         index = 0
@@ -380,7 +380,7 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
                     lines[line_index] = item.translated
                 encoded = newline.join(lines) + (newline if raw.endswith(("\n", "\r")) else "")
             else:
-                continue
+                raise ValueError(f"{relative}: bu dosya biçimi yama dışa aktarımı için desteklenmiyor.")
             output[relative] = (b"\xef\xbb\xbf" if had_bom else b"") + encoded.encode("utf-8")
         except StaleSourceError:
             raise
