@@ -1,16 +1,60 @@
 # Sarman TRANSLATE
 
-AI destekli oyun yerelleştirme aracı. İlk prototip Windows üzerinde kurulu oyunları keşfeder; henüz oyun dosyalarını değiştirmez veya çeviri yaması üretmez.
+Sarman TRANSLATE, oyunların metinlerini/dil dosyalarını bulmaya ve yerelleştirme yamalarını yönetmeye odaklanan hafif bir masaüstü aracıdır. Yapay zekâ zorunlu değildir: temel algılama ve dosya işlemleri yerel, küçük Python modülleriyle çalışır. İleride isteğe bağlı çeviri sağlayıcıları eklenebilir.
 
-## Özellikler (ilk prototip)
-- Steam kütüphanelerini `libraryfolders.vdf` üzerinden keşfeder.
-- Steam `appmanifest_*.acf` dosyalarından kurulu oyunları listeler.
+## Mevcut masaüstü prototipi
+- Koyu, sade arayüz; Sarman turuncusu vurgu rengi.
+- Steam kütüphanelerini ve kurulu oyun manifestlerini keşfeder.
 - Epic Games Launcher kurulum manifestlerini tarar.
-- Program Files ve yaygın oyun klasörlerini ek keşif kaynağı olarak tarar.
-- Bulunan oyunları arama alanıyla filtreler.
-- Tarama salt okunurdur; oyun dosyalarına yazmaz.
+- Yaygın oyun klasörlerini ek kaynak olarak tarar.
+- Oyunları arama ve seçme.
+- Yama Merkezi üzerinden uyumlu ZIP yama paketini seçme, doğrulama ve hedef oyuna yükleme.
+- Var olan hedef dosyalar için yerel yedek oluşturma ve son Sarman yamasını geri alma.
+- Oyun taraması salt okunurdur. Yama yükleme yalnızca kullanıcı onayıyla yapılır.
+
+## Yama paketi biçimi
+
+Yama, kök dizininde sarman-patch.json bulunan bir ZIP dosyası olmalıdır. Dosyalar paket içinde belirtilen kaynak konumlarında bulunur.
+
+Örnek paket yapısı:
+
+```text
+MyTurkishPatch.zip
+├── sarman-patch.json
+└── files/
+    ├── lang/
+    │   └── tr.json
+    └── localization/
+        └── strings.csv
+```
+
+Örnek manifest:
+
+```json
+{
+  "name": "Örnek Türkçe Yama",
+  "version": "1.0.0",
+  "files": [
+    {
+      "source": "files/lang/tr.json",
+      "target": "Game_Data/StreamingAssets/lang/tr.json"
+    },
+    {
+      "source": "files/localization/strings.csv",
+      "target": "Game_Data/Localization/strings.csv"
+    }
+  ]
+}
+```
+
+- source: ZIP içindeki dosyanın yolu.
+- target: seçilen oyun klasörüne göre göreli hedef yol.
+- Mutlak yollar ve .. ile oyun klasörü dışına çıkma reddedilir.
+- Paket kendi başına bir oyun dilini etkinleştirmeyi garanti etmez. Oyunun dil menüsüne yeni dil ekleme yöntemi oyun/engine entegrasyonuna bağlıdır.
+- Yalnızca güvendiğin kaynaklardan indirdiğin yamaları kullan. Çevrimiçi/anti-cheat korumalı oyunlarda dosya yaması uygulama.
 
 ## Geliştirme
+
 Python 3.11 veya üzeri önerilir.
 
 ```powershell
@@ -21,14 +65,20 @@ python main.py
 ```
 
 ## Windows EXE derleme
+
 ```powershell
 pip install -r requirements.txt
 pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --collect-all PySide6 main.py
 ```
-Çıktı: `dist/Sarman TRANSLATE/Sarman TRANSLATE.exe`
+
+Çıktı: dist/Sarman TRANSLATE/Sarman TRANSLATE.exe
 
 ## Güvenlik ve kapsam
-Bu sürüm yalnızca bilinen kurulum kayıtlarını ve klasör adlarını okur. Rastgele dosya çalıştırmaz, yönetici izni istemez ve oyun dosyalarını değiştirmez. Sonraki aşamalarda dil dosyası analizi, yedekleme, çeviri ve oyuna özgü dil entegrasyonları ayrı ve doğrulanabilir modüller olarak eklenecektir.
+
+Bu prototip genel amaçlı mod yöneticisi değildir; yalnızca yerelleştirme/dil dosyası paketleri için tasarlanır. Oyun dosyaları tarama sırasında değiştirilmez. Yama yüklenirken mevcut dosyalar kullanıcı profili altındaki Sarman yedek klasörüne kopyalanır; yeni dosyalar için geri alma kaydı tutulur. Oyun dosyalarını değiştiren işlemlerden önce onay istenir.
+
+Her oyun aynı dil dosyası biçimini kullanmaz. Unity, Unreal ve özel motorlar için uygun çıkarıcılar/entegrasyonlar ayrıca geliştirilecektir. Şu anki ZIP yükleyicisi, yalnızca dosyaları manifestteki hedeflere kopyalayabilen oyun yamalarını destekler; dil menüsüne otomatik kayıt her oyunda mümkün değildir.
 
 ## Katkı
-Pull request'ler memnuniyetle karşılanır. Oyun motoru entegrasyonları eklenirken yalnızca yerelleştirme verileriyle sınırlı kalınmalıdır.
+
+Dil profilleri, dosya biçimi çözücüleri, kalite kontrolleri ve oyun motoru yerelleştirme entegrasyonları için katkılar memnuniyetle karşılanır. Oynanış veya hile modifikasyonları kapsam dışıdır.
