@@ -109,7 +109,8 @@ def translate_text(text: str) -> str:
     """Translate one English string offline; cache hits never invoke the model."""
     if not isinstance(text, str) or not text.strip():
         return text
-    cached = _cache_get(text)
+    original_text = text
+    cached = _cache_get(original_text)
     if cached is not None:
         return cached
     try:
@@ -136,12 +137,49 @@ def translate_text(text: str) -> str:
         result = translator.translate(protected)
         for token, original in tokens:
             result = result.replace(token.strip(), original).replace(token, original)
-        issues = validate_translation(text, result)
+        issues = validate_translation(original_text, result)
         if issues:
             raise LocalTranslationError("Model çevirisi oyun değişkenlerini/biçimini koruyamadı: " + " ".join(issues))
-        _cache_put(text, result)
+        _cache_put(original_text, result)
         return result
     except LocalTranslationError:
         raise
     except Exception as exc:
         raise LocalTranslationError(f"Yerel çeviri başarısız: {exc}") from exc
+
+
+def glossary_items() -> list[tuple[str, str]]:
+    return sorted(_glossary_terms().items(), key=lambda item: item[0].casefold())
+
+
+def set_glossary_term(source: str, target: str) -> None:
+    import json
+    source, target = source.strip(), target.strip()
+    if not source or not target:
+        raise ValueError("Kaynak terim ve Türkçe karşılığı boş olamaz.")
+    path = APP_DATA / "glossary.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        custom = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        if not isinstance(custom, dict):
+            custom = {}
+    except (OSError, ValueError):
+        custom = {}
+    custom[source] = target
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps(custom, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp.replace(path)
+
+
+def delete_glossary_term(source: str) -> None:
+    import json
+    path = APP_DATA / "glossary.json"
+    if not path.exists():
+        return
+    try:
+        custom = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(custom, dict) and source in custom:
+            del custom[source]
+            path.write_text(json.dumps(custom, ensure_ascii=False, indent=2), encoding="utf-8")
+    except (OSError, ValueError):
+        return
