@@ -278,7 +278,10 @@ def installed_patch_languages(game_dir: str | Path) -> set[str]:
 
 def uninstall_all(game_dir: str | Path) -> list[str]:
     """Restore every active Sarman patch for a game, newest first, then remove its journals."""
-    root = Path(game_dir).resolve()
+    try:
+        root = Path(game_dir).resolve()
+    except (OSError, ValueError, RuntimeError, TypeError) as exc:
+        raise PatchError(f"Oyun klasörü yolu geçersiz: {exc}") from exc
     base = APP_DATA / "backups"
     states = []
     if not base.exists():
