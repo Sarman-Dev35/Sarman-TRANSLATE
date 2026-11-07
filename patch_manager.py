@@ -13,7 +13,7 @@ APP_DATA = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Sarman" / "TRANS
 MAX_FILES = 2000
 MAX_FILE_SIZE = 64 * 1024 * 1024
 MAX_TOTAL_SIZE = 256 * 1024 * 1024
-ALLOWED_TEXT_SUFFIXES = {".json", ".csv", ".txt"}
+ALLOWED_TEXT_SUFFIXES = {".json", ".csv", ".txt", ".ini"}
 
 
 class PatchError(Exception):
@@ -68,7 +68,7 @@ def _load_manifest(path: str | Path):
                 if source == "sarman-patch.json" or source not in names:
                     raise PatchError(f"Pakette kaynak dosya bulunamadı: {source}")
                 if Path(source).suffix.casefold() not in ALLOWED_TEXT_SUFFIXES or target.suffix.casefold() not in ALLOWED_TEXT_SUFFIXES:
-                    raise PatchError("Yalnızca desteklenen metin/dil dosyaları (.json, .csv, .txt) yüklenebilir.")
+                    raise PatchError("Yalnızca desteklenen metin/dil dosyaları (.json, .csv, .txt, .ini) yüklenebilir.")
                 if source.casefold() in seen_sources:
                     raise PatchError(f"Kaynak dosya birden fazla kez tanımlanmış: {source}")
                 if target.as_posix().casefold() in seen_targets:
