@@ -55,12 +55,16 @@ class TranslationCoreTests(unittest.TestCase):
             (root / "Localization" / "en-US" / "dialog.json").write_text('{"line":"Start Game"}', encoding="utf-8")
             (root / "Localization" / "tr-TR" / "dialog.json").write_text('{"line":"Oyuna Başla"}', encoding="utf-8")
             (root / "Localization" / "de-DE" / "dialog.json").write_text('{"line":"Spiel starten"}', encoding="utf-8")
+            (root / "Data" / "English").mkdir(parents=True)
+            (root / "Data" / "German").mkdir(parents=True)
+            (root / "Data" / "English" / "menu.json").write_text('{"line":"English folder text"}', encoding="utf-8")
+            (root / "Data" / "German" / "menu.json").write_text('{"line":"German folder text"}', encoding="utf-8")
             (root / "neutral.json").write_text('{"line":"Neutral text"}', encoding="utf-8")
 
             english = scan_game_texts(root, source_language="EN")
             german = scan_game_texts(root, source_language="DE")
-            self.assertEqual({item.source for item in english}, {"Start Game", "Neutral text"})
-            self.assertEqual({item.source for item in german}, {"Spiel starten", "Neutral text"})
+            self.assertEqual({item.source for item in english}, {"Start Game", "English folder text", "Neutral text"})
+            self.assertEqual({item.source for item in german}, {"Spiel starten", "German folder text", "Neutral text"})
 
     def test_csv_uses_selected_language_column(self):
         with tempfile.TemporaryDirectory() as tmp:
