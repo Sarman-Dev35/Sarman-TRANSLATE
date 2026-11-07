@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QApplication
 
 from game_discovery import Game, _normal, discover_games
 from translation_core import scan_game_texts
-from translation_studio import TranslationStudio
+from translation_studio import TextScanWorker, TranslationStudio
 
 
 class _ScanReceiver(QObject):
@@ -63,10 +63,16 @@ class ScanResilienceTests(unittest.TestCase):
             studio = TranslationStudio(Game("Rescan Test", "Test", str(root)))
             loop = QEventLoop()
             receiver = _ScanReceiver(studio, loop)
-            studio.scan_worker.completed.connect(receiver.completed)
-            studio.scan()
-            QTimer.singleShot(10000, loop.quit)
-            loop.exec()
+            original_start = TextScanWorker.start
+
+            def observe_start(worker, *args, **kwargs):
+                worker.completed.connect(receiver.completed)
+                return original_start(worker, *args, **kwargs)
+
+            with patch.object(TextScanWorker, "start", observe_start):
+                studio.scan()
+                QTimer.singleShot(10000, loop.quit)
+                loop.exec()
             self.assertEqual(receiver.results, [1, 1])
             self.assertIsNone(studio.scan_worker)
             studio.close()
