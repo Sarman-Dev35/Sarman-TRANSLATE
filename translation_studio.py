@@ -214,6 +214,13 @@ class TranslationStudio(QDialog):
             button.setEnabled(not busy)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers if busy else (QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed))
 
+    def closeEvent(self, event):
+        if self.worker and self.worker.isRunning():
+            QMessageBox.information(self, "Çeviri sürüyor", "Çeviri kuyruğu tamamlanana kadar bu pencereyi kapatamazsın. Tamamlanan satırlar otomatik kaydedilir.")
+            event.ignore()
+            return
+        event.accept()
+
     def export_patch(self):
         if not any(e.translated.strip() for e in self.entries):
             QMessageBox.information(self, "Yama", "Önce en az bir metni çevir.")
