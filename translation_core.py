@@ -56,11 +56,27 @@ def _language_code(value: str) -> str | None:
     return _LANGUAGE_ALIASES.get(token)
 
 
+_LOCALE_DIRECTORY_NAMES = {
+    "locale", "locales", "lang", "langs", "language", "languages",
+    "localization", "translations", "text",
+}
+
+
 def _language_for_path(path: Path) -> str | None:
-    for part in path.parts:
-        candidates = [part.casefold().replace("_", "-")]
-        candidates.extend(re.split(r"[^a-z0-9-]+", Path(part).stem.casefold()))
-        for candidate in candidates:
+    parts = list(path.parts)
+    locale_index = next(
+        (index for index, part in enumerate(parts[:-1]) if part.casefold() in _LOCALE_DIRECTORY_NAMES),
+        None,
+    )
+    if locale_index is not None:
+        for part in parts[locale_index + 1:]:
+            for candidate in (part.casefold().replace("_", "-"), *re.split(r"[^a-z0-9-]+", Path(part).stem.casefold())):
+                code = _language_code(candidate)
+                if code:
+                    return code
+    if parts:
+        filename_stem = Path(parts[-1]).stem.casefold()
+        for candidate in re.split(r"[^a-z0-9-]+", filename_stem):
             code = _language_code(candidate)
             if code:
                 return code
