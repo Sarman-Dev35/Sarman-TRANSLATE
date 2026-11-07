@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest
 from gemini_settings import GeminiSettingsDialog
+from translation_studio import TranslationStudio
 
 APP_NAME = "Sarman TRANSLATE"
 ACCENT = "#e58a43"
@@ -158,6 +159,11 @@ class MainWindow(QMainWindow):
         self.search.setMaximumWidth(300)
         self.search.textChanged.connect(self.render_games)
         row.addWidget(self.search)
+        self.studio_btn = QPushButton("Çeviri Atölyesi")
+        self.studio_btn.setObjectName("primary")
+        self.studio_btn.setEnabled(False)
+        self.studio_btn.clicked.connect(self.open_translation_studio)
+        row.addWidget(self.studio_btn)
         lib.addLayout(row)
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["OYUN", "KAYNAK", "KURULUM KONUMU"])
@@ -334,11 +340,20 @@ class MainWindow(QMainWindow):
     def selection_changed(self):
         game = self.selected_game()
         if game:
+            self.studio_btn.setEnabled(True)
             self.target_label.setText(f"{game.name}  ·  {game.path}")
             self.install_btn.setEnabled(bool(self.patch_path))
         else:
             self.target_label.setText("Önce Oyun kütüphanesi bölümünden bir oyun seç.")
             self.install_btn.setEnabled(False)
+
+    def open_translation_studio(self):
+        game = self.selected_game()
+        if not game:
+            QMessageBox.information(self, APP_NAME, "Önce oyun listesinden bir oyun seç.")
+            return
+        dialog = TranslationStudio(game, self)
+        dialog.exec()
 
     def choose_patch(self):
         filename, _ = QFileDialog.getOpenFileName(self, "Sarman yama paketi seç", "", "Yama paketleri (*.zip)")
