@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: translation-tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests:
     runs-on: windows-latest
