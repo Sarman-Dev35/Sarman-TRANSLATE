@@ -5,7 +5,7 @@ import hashlib
 from pathlib import Path
 
 import credential_store
-from PySide6.QtCore import QThread, Signal, Qt
+from PySide6.QtCore import QThread, Signal, Qt, QTimer
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QMessageBox, QFileDialog, QProgressBar
@@ -104,6 +104,10 @@ class TranslationStudio(QDialog):
         self.worker = None
         self.scan_worker = None
         self._rendering = False
+        self.autosave_timer = QTimer(self)
+        self.autosave_timer.setSingleShot(True)
+        self.autosave_timer.setInterval(750)
+        self.autosave_timer.timeout.connect(lambda: self.save(silent=True))
         self.setWindowTitle(f"Çeviri Atölyesi · {game.name}")
         self.resize(1050, 700)
         self._build()
@@ -226,13 +230,19 @@ class TranslationStudio(QDialog):
         self.table.item(cell.row(), 0).setText(entry.status)
         self.save()
 
-    def save(self):
+    def save(self, silent=False):
+        if self.autosave_timer.isActive():
+            self.autosave_timer.stop()
         try:
             self.workspace_path.parent.mkdir(parents=True, exist_ok=True)
             save_workspace(self.workspace_path, self.game.path, self.entries)
-            self.status.setText(f"Çalışma kaydedildi · {self.workspace_path}")
+            if not silent:
+                self.status.setText(f"Çalışma kaydedildi · {self.workspace_path}")
         except Exception as exc:
-            QMessageBox.warning(self, "Kaydetme", str(exc))
+            if silent:
+                self.status.setText(f"Otomatik kaydetme başarısız: {exc}")
+            else:
+                QMessageBox.warning(self, "Kaydetme", str(exc))
 
     def translate_pending(self):
         try:
@@ -251,7 +261,7 @@ class TranslationStudio(QDialog):
         self._set_busy(True)
         self.progress.setRange(0, len(indices))
         self.worker = TranslateWorker(self.entries, api_key, model, indices, simulate_quota=quota_test_remaining() > 0)
-        self.worker.progress.connect(lambda n, total, text: (self.progress.setValue(n), self.status.setText(f"{n}/{total} çevrildi · {text}")))
+        self.worker.progress.connect(self._translation_progress)
         self.worker.row_done.connect(self._translation_done)
         self.worker.paused.connect(self._quota_paused)
         self.worker.failed.connect(self._translation_failed)
@@ -261,11 +271,25 @@ class TranslationStudio(QDialog):
     def _translation_done(self, index, result):
         self.entries[index].translated = result
         self.entries[index].status = "translated"
-        self.render()
-        self.save()
+        if 0 <= index < self.table.rowCount():
+            self._rendering = True
+            status_cell = self.table.item(index, 0)
+            translation_cell = self.table.item(index, 3)
+            if status_cell:
+                status_cell.setText("translated")
+            if translation_cell:
+                translation_cell.setText(result)
+            self._rendering = False
+        if not self.autosave_timer.isActive():
+            self.autosave_timer.start()
+
+    def _translation_progress(self, completed, total, current_text):
+        self.progress.setValue(completed)
+        self.status.setText(f"{completed}/{total} çevrildi · {current_text}")
 
     def _quota_paused(self, message):
         self._set_busy(False)
+        self.autosave_timer.stop()
         self.save()
         if message == "TEST_QUOTA_SIMULATION":
             self.status.setText("TEST MODU — Çeviri API isteği gönderilmeden duraklatıldı. Çalışma kaydedildi.")
@@ -281,11 +305,13 @@ class TranslationStudio(QDialog):
 
     def _translation_failed(self, message):
         self._set_busy(False)
+        self.autosave_timer.stop()
         self.save()
         QMessageBox.warning(self, "Çeviri hatası", message)
 
     def _translation_completed(self):
         self._set_busy(False)
+        self.autosave_timer.stop()
         self.save()
         self.status.setText("Çeviri kuyruğu tamamlandı. Çevirileri gözden geçir.")
 
