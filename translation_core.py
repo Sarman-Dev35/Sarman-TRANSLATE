@@ -185,21 +185,19 @@ def scan_game_texts(
                 if suffix == ".json":
                     data = json.loads(text)
 
-                    def walk(node, path=()):
+                    stack = [(data, ())]
+                    while stack:
+                        node, path = stack.pop()
                         if isinstance(node, dict):
-                            for key, val in node.items():
-                                walk(val, path + (str(key),))
+                            stack.extend((value, path + (str(key),)) for key, value in reversed(list(node.items())))
                         elif isinstance(node, list):
-                            for index, val in enumerate(node):
-                                walk(val, path + (str(index),))
+                            stack.extend((value, path + (str(index),)) for index, value in reversed(list(enumerate(node))))
                         elif isinstance(node, str):
                             # JSON Pointer escaping makes unusual keys reversible.
                             locator = "" if not path else "/" + "/".join(part.replace("~", "~0").replace("/", "~1") for part in path)
                             item = _entry(file, root, locator, node)
                             if item:
                                 found.append(item)
-
-                    walk(data)
                 elif suffix == ".csv":
                     try:
                         dialect = csv.Sniffer().sniff(text[:8192], delimiters=",;\t|")
