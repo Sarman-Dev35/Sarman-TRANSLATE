@@ -290,7 +290,7 @@ class MainWindow(QMainWindow):
         self.table.setIconSize(QSize(176, 96))
         self.table.setColumnWidth(0, 310)
         self.table.setAlternatingRowColors(True)
-        self.table.verticalHeader().setDefaultSectionSize(112)
+        self.table.verticalHeader().setDefaultSectionSize(124)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.itemSelectionChanged.connect(self.selection_changed)
         lib.addWidget(self.table, 1)
@@ -490,7 +490,7 @@ class MainWindow(QMainWindow):
             status_cell = QTableWidgetItem(status)
             status_cell.setToolTip(status)
             self.table.setItem(row, 2, status_cell)
-            self.table.setRowHeight(row, 112)
+            self.table.setRowHeight(row, 124)
             if hasattr(self, "art_service"):
                 self.art_service.request(game)
 
