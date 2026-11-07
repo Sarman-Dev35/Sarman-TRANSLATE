@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from translation_core import TextEntry, scan_game_texts, load_workspace, save_workspace, build_translated_files, create_translation_patch, validate_translation
-from gemini_translator import translate_text, GeminiTranslationError
+from gemini_translator import translate_batch, GeminiTranslationError
 
 SERVICE = "Sarman.TRANSLATE.Gemini"
 
@@ -33,18 +33,24 @@ class TranslateWorker(QThread):
 
     def run(self):
         total = len(self.indices)
-        for position, index in enumerate(self.indices, 1):
-            entry = self.entries[index]
+        completed = 0
+        batch_size = 5
+        for offset in range(0, total, batch_size):
+            chunk = self.indices[offset:offset + batch_size]
+            payload = [(str(index), self.entries[index].source) for index in chunk]
             try:
-                result = translate_text(self.api_key, self.model, entry.source)
-                self.row_done.emit(index, result)
+                translated = translate_batch(self.api_key, self.model, payload)
+                for index in chunk:
+                    self.row_done.emit(index, translated[str(index)])
+                completed += len(chunk)
+                self.progress.emit(completed, total, self.entries[chunk[-1]].source[:80])
             except GeminiTranslationError as exc:
                 if exc.quota:
                     self.paused.emit(str(exc))
                 else:
-                    self.failed.emit(f"{entry.file} · {entry.locator}: {exc}")
+                    first = self.entries[chunk[0]]
+                    self.failed.emit(f"{first.file} · {first.locator}: {exc}")
                 return
-            self.progress.emit(position, total, entry.source[:80])
         self.completed.emit()
 
 
