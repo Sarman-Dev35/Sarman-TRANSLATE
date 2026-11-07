@@ -153,11 +153,11 @@ class TranslateWorker(QThread):
 class ModelInstallWorker(QThread):
     completed = Signal()
     failed = Signal(str)
-    progress = Signal(int, int)
+    progress = Signal(int, int, float, int)
 
     def run(self):
         try:
-            install_english_turkish_model(lambda done, total: self.progress.emit(done, total))
+            install_english_turkish_model(lambda done, total, speed, eta: self.progress.emit(done, total, speed, eta))
             self.completed.emit()
         except Exception as exc:
             self.failed.emit(str(exc))
@@ -341,7 +341,11 @@ class TranslationStudio(QDialog):
             return
         self.model_btn.setEnabled(False)
         self.remove_model_btn.setEnabled(False)
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress.setFormat("Model indiriliyor · %p%")
         self.status.setText("Hy-MT2 İngilizce → Türkçe çeviri modeli indiriliyor…")
+        self.model_status_label.setText("Bağlantı kuruluyor… · yaklaşık 1,13 GB")
         self.worker = ModelInstallWorker(self)
         self.worker.completed.connect(self._model_installed)
         self.worker.failed.connect(self._model_install_failed)
@@ -349,12 +353,24 @@ class TranslationStudio(QDialog):
         self.worker.progress.connect(self._model_download_progress)
         self.worker.start()
 
-    def _model_download_progress(self, downloaded, total):
+    def _model_download_progress(self, downloaded, total, speed, eta):
         if total > 0:
             percent = min(100, int(downloaded * 100 / total))
-            self.model_status_label.setText(f"Model indiriliyor… %{percent}  ·  {downloaded // (1024*1024)} / {total // (1024*1024)} MB")
+            mb_done = downloaded / (1024 * 1024)
+            mb_total = total / (1024 * 1024)
+            speed_text = f"{speed / (1024 * 1024):.2f} MB/sn" if speed > 0 else "hız ölçülüyor…"
+            eta_text = f" · yaklaşık {eta // 60} dk {eta % 60} sn kaldı" if eta > 0 else ""
+            self.progress.setRange(0, 100)
+            self.progress.setValue(percent)
+            self.progress.setFormat(f"Model indiriliyor · %p%")
+            self.model_status_label.setText(
+                f"İndirilen: {mb_done:,.1f} / {mb_total:,.1f} MB  ·  {speed_text}{eta_text}"
+            )
 
     def _model_installed(self):
+        self.progress.setRange(0, 100)
+        self.progress.setValue(100)
+        self.progress.setFormat("Model indirildi ve doğrulandı · %p%")
         self.status.setText("Hy-MT2 hazır. Artık internet olmadan çeviri yapabilirsin.")
         self.refresh_model_status()
 
