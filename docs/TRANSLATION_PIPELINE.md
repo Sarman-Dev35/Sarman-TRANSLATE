@@ -13,7 +13,7 @@ Bunlar yerel kurulum izleridir, tam lisans envanteri değildir. Kurulu olmayan s
 
 `translation_core.py` salt okunur tarama yapar. Şu an JSON string değerleri, CSV hücreleri ve TXT satırları çıkarılır. Boyut ve dosya sayısı sınırları vardır; ikili dosyalar okunmaz. CSV başlıkları için yaygın metin sütunu adları tanınır, başlık bulunamazsa sınırlı sütun aralığı aday kabul edilir.
 
-Her kayıt dosya yolu, alan/satır konumu, kaynak metin, çeviri ve durum taşır. Çalışma dosyası kullanıcı profili altında JSON olarak saklanır. JSON/CSV/TXT dışa aktarımı yeni dosya içeriği üretir; oyun kaynak dosyalarına doğrudan yazmaz.
+Her kayıt dosya yolu, alan/satır konumu, kaynak metin, çeviri ve durum taşır. Çalışma dosyası kullanıcı profili altında JSON olarak saklanır. JSON/CSV/TXT/INI dışa aktarımı yeni dosya içeriği üretir; oyun kaynak dosyalarına doğrudan yazmaz.
 
 ## 3. Çeviri motoru
 
@@ -23,7 +23,7 @@ Yer tutucular, format kodları, markup etiketleri ve satır sonları için kalit
 
 ## 4. Yama üretimi ve kurulum
 
-Çevirilmiş desteklenen dosyalar manifestli ZIP'e alınır. Yükleyici yalnızca UTF-8 JSON/CSV/TXT kabul eder; yol geçişi, symlink, duplicate hedef, şifreli girdiler, dosya adedi/boyutu ve dosya uzantısı kontrolleri uygular. Her dosyanın önceki hali yedeklenir; kurulum hatasında mümkün olduğunca geri sarılır. Geri alma kaydı yerel kullanıcı verisindedir.
+Çevirilmiş desteklenen dosyalar manifestli ZIP'e alınır. Yükleyici yalnızca UTF-8 JSON/CSV/TXT/INI kabul eder; yol geçişi, symlink, duplicate hedef, şifreli girdiler, dosya adedi/boyutu ve dosya uzantısı kontrolleri uygular. Her dosyanın önceki hali yedeklenir; kurulum hatasında mümkün olduğunca geri sarılır. Geri alma kaydı yerel kullanıcı verisindedir.
 
 Paket dosyalarını oyun klasörüne kopyalamak oyunun bu dosyaları otomatik yükleyeceğini garanti etmez. Oyun motoruna özgü hedef yolu, dil menüsü kaydı veya arşiv entegrasyonu ayrıca geliştirilmelidir.
 
