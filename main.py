@@ -386,6 +386,7 @@ class MainWindow(QMainWindow):
         worker = self.sender()
         if worker is self.worker:
             self.worker = None
+            self.scan_btn.setEnabled(True)
 
     def scan_finished(self, games):
         worker = self.sender()
@@ -404,7 +405,6 @@ class MainWindow(QMainWindow):
         self.render_games()
         self.library_status.setText(f"Tarama tamamlandı · {len(games)} oyun bulundu")
         self.selection_changed()
-        self.scan_btn.setEnabled(True)
         self.scan_btn.setText("⟳   Yeniden tara")
 
     def scan_failed(self, message):
@@ -413,7 +413,6 @@ class MainWindow(QMainWindow):
             return
         self.library_status.setText("Tarama sırasında hata oluştu")
         QMessageBox.warning(self, APP_NAME, message)
-        self.scan_btn.setEnabled(True)
         self.scan_btn.setText("⟳   Yeniden tara")
 
     def render_games(self):
