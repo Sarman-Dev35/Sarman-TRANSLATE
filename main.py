@@ -92,7 +92,7 @@ def scan_common_folders() -> list[Game]:
     bases = [
         Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")),
         Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)")),
-        Path("D:/Games"), Path("D:/ oyunlar"), Path.home() / "Games",
+        Path("D:/Games"), Path("D:/Oyunlar"), Path.home() / "Games",
     ]
     skip = {"common files", "windowsapps", "windows defender", "internet explorer"}
     seen = set()
