@@ -488,7 +488,12 @@ class MainWindow(QMainWindow):
         selected = self.selected_game()
         selected_path = selected.path if selected else None
         query = self.search.text().casefold()
-        items = [g for g in self.games if query in g.name.casefold() or query in g.platform.casefold() or query in g.path.casefold()]
+        items = [
+            game for game in self.games
+            if query in game.name.casefold()
+            or query in game.platform.casefold()
+            or query in game.path.casefold()
+        ]
         self.table.blockSignals(True)
         self.table.setRowCount(len(items))
         for row, game in enumerate(items):
@@ -499,21 +504,25 @@ class MainWindow(QMainWindow):
             if incomplete:
                 patch_status += "  ·  Yarım kalan yükleme"
             status = f"{detected}  ·  {patch_status}"
-            values = (game.name, game.platform, status)
-            for col, value in enumerate(values):
-                cell = QTableWidgetItem(value)
-                cell.setToolTip(value)
-                if col == 0:
-                    cell.setFont(QFont("Segoe UI", 10, QFont.DemiBold))
-                if col == 0:
-                cover = make_placeholder_cover(game.name, game.platform, *palette_for_game(game.name))
-                cell.setIcon(QIcon(QPixmap.fromImage(cover)))
-                cell.setFont(QFont("Segoe UI", 11, QFont.Bold))
-            self.table.setItem(row, col, cell)
-            self.table.item(row, 0).setData(Qt.UserRole, game.path)
+
+            name_cell = QTableWidgetItem(game.name)
+            name_cell.setToolTip(f"{game.name}\n{game.platform}\n{game.path}")
+            name_cell.setFont(QFont("Segoe UI", 11, QFont.Bold))
+            cover = make_placeholder_cover(game.name, game.platform, *palette_for_game(game.name))
+            name_cell.setIcon(QIcon(QPixmap.fromImage(cover)))
+            name_cell.setData(Qt.UserRole, game.path)
+            self.table.setItem(row, 0, name_cell)
+
+            platform_cell = QTableWidgetItem(game.platform)
+            platform_cell.setToolTip(game.platform)
+            self.table.setItem(row, 1, platform_cell)
+            status_cell = QTableWidgetItem(status)
+            status_cell.setToolTip(status)
+            self.table.setItem(row, 2, status_cell)
             self.table.setRowHeight(row, 112)
             if hasattr(self, "art_service"):
                 self.art_service.request(game)
+
         if selected_path:
             for row, game in enumerate(items):
                 if game.path == selected_path:
