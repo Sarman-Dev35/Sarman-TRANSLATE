@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import sys
+import json
+import os
+from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFont
@@ -24,9 +27,13 @@ class ScanWorker(QThread):
     completed = Signal(list)
     failed = Signal(str)
 
+    def __init__(self, extra_roots=None):
+        super().__init__()
+        self.extra_roots = extra_roots or []
+
     def run(self):
         try:
-            self.completed.emit(discover_games())
+            self.completed.emit(discover_games(self.extra_roots))
         except Exception as exc:
             self.failed.emit(str(exc))
 
@@ -52,6 +59,7 @@ class MainWindow(QMainWindow):
         self.resize(1180, 760)
         self.setMinimumSize(900, 620)
         self.games: list[Game] = []
+        self.custom_roots = self.load_custom_roots()
         self.worker = None
         self.patch_path: str | None = None
         self.build_ui()
@@ -117,6 +125,9 @@ class MainWindow(QMainWindow):
         self.scan_btn.setObjectName("primary")
         self.scan_btn.clicked.connect(self.start_scan)
         header.addWidget(self.scan_btn)
+        self.add_folder_btn = QPushButton("＋  Oyun klasörü ekle")
+        self.add_folder_btn.clicked.connect(self.add_game_folder)
+        header.addWidget(self.add_folder_btn)
         layout.addLayout(header)
 
         self.pages = QTabWidget()
@@ -276,6 +287,37 @@ class MainWindow(QMainWindow):
             QLabel#warning { color:#dca879; background:#211b16; border:1px solid #493323; border-radius:8px; padding:12px; }
         """)
 
+    @staticmethod
+    def _settings_path():
+        return Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Sarman" / "TRANSLATE" / "settings.json"
+
+    def load_custom_roots(self):
+        try:
+            data = json.loads(self._settings_path().read_text(encoding="utf-8"))
+            roots = data.get("custom_game_roots", [])
+            return [str(Path(p)) for p in roots if Path(p).is_dir()]
+        except (OSError, ValueError, TypeError):
+            return []
+
+    def save_custom_roots(self):
+        path = self._settings_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"custom_game_roots": self.custom_roots}, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def add_game_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "Oyun kütüphanesi klasörünü seç")
+        if not folder:
+            return
+        normalized = os.path.normcase(os.path.abspath(folder))
+        if normalized not in {os.path.normcase(os.path.abspath(p)) for p in self.custom_roots}:
+            self.custom_roots.append(folder)
+            try:
+                self.save_custom_roots()
+                self.library_status.setText(f"Özel oyun klasörü eklendi · {folder}")
+            except OSError as exc:
+                QMessageBox.warning(self, APP_NAME, f"Klasör tercihi kaydedilemedi: {exc}")
+        self.start_scan()
+
     def open_gemini_settings(self):
         dialog = GeminiSettingsDialog(self)
         dialog.exec()
@@ -295,7 +337,7 @@ class MainWindow(QMainWindow):
         self.scan_btn.setEnabled(False)
         self.scan_btn.setText("Taranıyor…")
         self.library_status.setText("Oyun kütüphaneleri taranıyor…")
-        self.worker = ScanWorker()
+        self.worker = ScanWorker(self.custom_roots)
         self.worker.completed.connect(self.scan_finished)
         self.worker.failed.connect(self.scan_failed)
         self.worker.start()
