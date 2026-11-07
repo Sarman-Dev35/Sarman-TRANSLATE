@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-import configparser
+import io
 import json
 import re
 from dataclasses import asdict, dataclass
@@ -89,13 +89,14 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
                         if item: found.append(item)
                 walk(data)
             elif suffix == ".csv":
-                rows = list(csv.reader(text.splitlines()))
+                rows = list(csv.reader(io.StringIO(text, newline="")))
                 if rows:
                     header = [x.casefold().strip() for x in rows[0]]
-                    text_cols = [i for i, h in enumerate(header) if any(k in h for k in ("text", "value", "string", "dialog", "description", "message", "translation"))]
+                    text_cols = [i for i, h in enumerate(header) if any(k in h for k in ("text", "value", "string", "dialog", "description", "message", "translation", "english", "source"))]
+                    has_header = bool(text_cols) or any(h in {"id", "key", "identifier", "name"} for h in header)
                     if not text_cols:
-                        text_cols = list(range(min(len(rows[0]), 8)))
-                    start = 1 if any(header) else 0
+                        text_cols = [i for i, h in enumerate(header) if h not in {"id", "key", "identifier"}] if has_header else list(range(min(len(rows[0]), 8)))
+                    start = 1 if has_header else 0
                     for ri, row in enumerate(rows[start:], start=start):
                         for ci in text_cols:
                             if ci < len(row):
@@ -229,7 +230,7 @@ def build_translated_files(game_dir: str | Path, entries: Iterable[TextEntry]) -
 
 def _safe_workspace_path(value: str) -> Path:
     candidate = Path(value)
-    if candidate.is_absolute() or any(part in ("..", "") for part in candidate.parts):
+    if ":" in value or "\\\\" in value or candidate.is_absolute() or any(part in ("..", "") for part in candidate.parts):
         raise ValueError("Çalışma dosyasında güvenli olmayan hedef yolu.")
     return candidate
 
