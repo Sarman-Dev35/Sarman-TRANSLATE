@@ -26,9 +26,9 @@ class LocalEngineTests(unittest.TestCase):
                 result = local_engine.translate_text("Press any key {player}", game_name="Test Game")
             self.assertEqual(result, "Bir tuşa bas {player}")
             self.assertIn("Translate the following video-game text from English into Turkish", fake.prompt)
-            self.assertIn("Return only the Turkish translation", fake.prompt)
+            self.assertIn("without additional explanation", fake.prompt)
             self.assertNotIn("<|im_start|>", fake.prompt)
-            self.assertEqual(fake.kwargs["temperature"], 0.3)
+            self.assertEqual(fake.kwargs["temperature"], 0.7)
             self.assertEqual(fake.kwargs["top_k"], 20)
 
     def test_model_metadata_targets_compact_translation_model(self):
@@ -79,6 +79,53 @@ class LocalEngineTests(unittest.TestCase):
             self.assertEqual(local_engine._cache_get("Continue"), "Devam")
             local_engine.set_glossary_term("Continue", "Sürdür")
             self.assertIsNone(local_engine._cache_get("Continue"))
+
+    def test_single_word_glossary_does_not_override_contextual_sentence_translation(self):
+        class FakeModel:
+            def __init__(self):
+                self.prompt = ""
+            def __call__(self, prompt, **kwargs):
+                self.prompt = prompt
+                return {"choices": [{"text": "Motoru çalıştır"}]}
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(local_engine, "APP_DATA", Path(tmp)):
+            fake = FakeModel()
+            with patch.object(local_engine, "_get_model", return_value=fake), patch.object(
+                local_engine, "_cache_get", return_value=None
+            ), patch.object(local_engine, "_cache_put"):
+                result = local_engine.translate_text("Start the engine")
+            self.assertEqual(result, "Motoru çalıştır")
+            self.assertIn("Text: Start the engine", fake.prompt)
+            self.assertNotIn("Text: SARMANTERM", fake.prompt)
+
+    def test_cache_key_changes_when_translation_pipeline_changes(self):
+        with patch.object(local_engine, "APP_DATA", Path(tempfile.gettempdir())):
+            first = local_engine._cache_key("Start")
+            with patch.object(local_engine, "TRANSLATION_PIPELINE_VERSION", "next"):
+                second = local_engine._cache_key("Start")
+        self.assertNotEqual(first, second)
+
+    def test_download_uses_large_buffer(self):
+        self.assertEqual(local_engine.DOWNLOAD_CHUNK_SIZE, 4 * 1024 * 1024)
+
+    def test_translation_memory_writes_are_serialized_across_threads(self):
+        import threading
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(local_engine, "APP_DATA", Path(tmp)):
+            errors = []
+            def write(index):
+                try:
+                    local_engine._cache_put(f"source-{index}", f"çeviri-{index}")
+                except Exception as exc:
+                    errors.append(exc)
+            threads = [threading.Thread(target=write, args=(index,)) for index in range(16)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=10)
+            self.assertFalse(errors)
+            for index in range(16):
+                self.assertEqual(local_engine._cache_get(f"source-{index}"), f"çeviri-{index}")
 
     def test_empty_text_is_unchanged(self):
         self.assertEqual(local_engine.translate_text("  "), "  ")

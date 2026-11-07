@@ -1,8 +1,14 @@
 name: Translation MVP Tests
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.py'
+      - 'requirements.txt'
+      - '.github/workflows/translation-tests.yml'
   push:
-    branches: [main, feature/complete-translation-mvp, feature/format-preservation-engine-readiness, feature/local-translation-engine-patch-management, feature/model-management-and-patch-controls, feature/signed-publisher-download-progress, fix/patch-export-rescan-and-branding, fix/language-selection-partial-patch-recovery]
+    branches: [main, feature/complete-translation-mvp, feature/format-preservation-engine-readiness, feature/local-translation-engine-patch-management, feature/model-management-and-patch-controls, feature/signed-publisher-download-progress, fix/patch-export-rescan-and-branding, fix/language-selection-partial-patch-recovery, fix/stability-translation-throughput]
     paths:
       - '**.py'
       - 'requirements.txt'

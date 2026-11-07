@@ -32,9 +32,14 @@ MODEL_URL = "https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF/resolve/main/Hy-MT2
 MODEL_SHA256 = "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699"
 MODEL_FILE_SIZE = 1_133_080_448
 MODEL_SIZE_HINT = MODEL_FILE_SIZE
+# Cache invalidation for translation-quality and prompt changes.
+TRANSLATION_PIPELINE_VERSION = "2026-11-07.2"
+DOWNLOAD_CHUNK_SIZE = 4 * 1024 * 1024
 _LOCK = threading.RLock()
 _INFERENCE_LOCK = threading.Lock()
 _DOWNLOAD_LOCK = threading.Lock()
+_CACHE_LOCK = threading.RLock()
+_GLOSSARY_LOCK = threading.RLock()
 _MODEL = None
 _TOKEN_RE = re.compile(r"\{[^{}]+\}|\$\{[^{}]+\}|\$[A-Za-z_][A-Za-z0-9_]*|%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[a-zA-Z%]|\[[A-Za-z0-9_.:-]+\]|<[^>]+>|\\[nrt]|\\u[0-9a-fA-F]{4}")
 
@@ -106,13 +111,18 @@ def _install_english_turkish_model_locked(progress=None) -> None:
     if existing >= MODEL_FILE_SIZE:
         partial.unlink(missing_ok=True)
         existing = 0
-    headers = {"User-Agent": "Sarman-TRANSLATE/0.3", "Accept": "application/octet-stream"}
+    headers = {"User-Agent": "Sarman-TRANSLATE/0.4", "Accept": "application/octet-stream", "Accept-Encoding": "identity"}
     if existing:
         headers["Range"] = f"bytes={existing}-"
     request = urllib.request.Request(MODEL_URL, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=90) as response:
-            resumed = bool(existing and getattr(response, "status", 200) == 206)
+            response_status = getattr(response, "status", 200)
+            resumed = bool(existing and response_status == 206)
+            if resumed:
+                content_range = response.headers.get("Content-Range", "")
+                if not content_range.startswith(f"bytes {existing}-"):
+                    raise OSError("Sunucu devam indirmesi için geçersiz Content-Range döndürdü.")
             downloaded = existing if resumed else 0
             # The model size is pinned and independently verified below. Using it here
             # also keeps the progress display correct for HTTP Range responses.
@@ -124,7 +134,7 @@ def _install_english_turkish_model_locked(progress=None) -> None:
                 progress(downloaded, total, 0.0, 0)
             with partial.open(mode) as output:
                 while True:
-                    chunk = response.read(1024 * 1024)
+                    chunk = response.read(DOWNLOAD_CHUNK_SIZE)
                     if not chunk:
                         break
                     output.write(chunk)
@@ -208,7 +218,7 @@ def _glossary_terms() -> dict[str, str]:
 
 def _cache_key(source: str, context: str = "", game_name: str = "") -> str:
     glossary = json.dumps(_glossary_terms(), ensure_ascii=False, sort_keys=True)
-    payload = "\0".join((source, context, game_name, glossary))
+    payload = "\0".join((TRANSLATION_PIPELINE_VERSION, source, context, game_name, glossary))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -217,20 +227,22 @@ def _cache_get(source: str, context: str = "", game_name: str = "") -> str | Non
     if not path.exists():
         return None
     try:
-        with closing(sqlite3.connect(path, timeout=5)) as db:
+        with _CACHE_LOCK, closing(sqlite3.connect(path, timeout=30)) as db:
+            db.execute("PRAGMA busy_timeout=30000")
             row = db.execute(
                 "SELECT translated FROM memory WHERE source_hash=?",
                 (_cache_key(source, context, game_name),),
             ).fetchone()
             return row[0] if row else None
-    except sqlite3.OperationalError:
+    except sqlite3.Error:
         return None
 
 
 def _cache_put(source: str, translated: str, context: str = "", game_name: str = "") -> None:
     path = _cache_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with closing(sqlite3.connect(path, timeout=10)) as db:
+    with _CACHE_LOCK, closing(sqlite3.connect(path, timeout=30)) as db:
+        db.execute("PRAGMA busy_timeout=30000")
         db.execute(
             "CREATE TABLE IF NOT EXISTS memory (source_hash TEXT PRIMARY KEY, source TEXT NOT NULL, translated TEXT NOT NULL)"
         )
@@ -256,8 +268,10 @@ def _get_model():
         try:
             _MODEL = Llama(
                 model_path=str(MODEL_PATH),
-                n_ctx=4096,
+                # Hy-MT2 documents an 8192-token context window.
+                n_ctx=8192,
                 n_threads=max(2, min(8, os.cpu_count() or 4)),
+                n_threads_batch=max(2, min(8, os.cpu_count() or 4)),
                 n_gpu_layers=0,
                 verbose=False,
             )
@@ -273,11 +287,15 @@ def translate_text(text: str, context: str = "", game_name: str = "") -> str:
     original_text = text
     cached = _cache_get(original_text, context, game_name)
     if cached is not None:
-        return cached
+        if cached.strip() and not validate_translation(original_text, cached) and cached.casefold() != original_text.casefold():
+            return cached
 
     tokens: list[tuple[str, str]] = []
     glossary = sorted(_glossary_terms().items(), key=lambda item: len(item[0]), reverse=True)
     for source_term, target_term in glossary:
+        # Avoid forcing single words inside unrelated sentences.
+        if len(source_term.split()) == 1 and text.strip().casefold() != source_term.casefold():
+            continue
         pattern = r"(?<!\w)" + re.escape(source_term) + r"(?!\w)"
         if re.search(pattern, text, re.IGNORECASE):
             marker = f"SARMANTERM{len(tokens):04d}X"
@@ -290,27 +308,26 @@ def translate_text(text: str, context: str = "", game_name: str = "") -> str:
         return marker
 
     protected = _TOKEN_RE.sub(protect, text)
-    context_block = context.strip()[:1000] if context.strip() else "(No extra context)"
-    game_context = game_name.strip()[:120] or "video game"
+    context_block = context.strip()[:600]
+    game_context = game_name.strip()[:100] or "video game"
+    # Tencent's official GGUF example uses a direct translation instruction.
     prompt = (
-        "Translate the following video-game text from English into Turkish.\n"
-        "Return only the Turkish translation. Do not explain, answer questions, add notes, "
-        "or produce alternatives. Preserve the meaning, tone, character voice and concise in-game style. "
-        "Use the game context to resolve ambiguous words and idioms. Recreate a pun naturally in Turkish "
-        "when a literal translation would lose its intended meaning. Keep every SARMANTERM and SARMANPH "
-        "placeholder exactly unchanged.\n\n"
-        f"Game: {game_context}\n"
-        f"Nearby game text for context:\n{context_block}\n\n"
-        f"Text to translate:\n{protected}\n\n"
-        "Turkish translation:"
+        "Translate the following video-game text from English into Turkish, without additional explanation. "
+        "Preserve meaning, character voice, tone, punctuation, line breaks and formatting. "
+        "Use natural, idiomatic Turkish suitable for a game. Do not leave ordinary English words untranslated. "
+        "Keep every SARMANTERM and SARMANPH placeholder exactly unchanged.\n"
+        f"Game context: {game_context}.\n"
+        + (f"Nearby context: {context_block}\n" if context_block else "")
+        + f"Text: {protected}\n"
+        + "Turkish:"
     )
     try:
         with _INFERENCE_LOCK:
             model = _get_model()
             response = model(
                 prompt,
-                max_tokens=min(512, max(64, len(protected) * 4)),
-                temperature=0.3,
+                max_tokens=min(4096, max(128, len(protected) * 3)),
+                temperature=0.7,
                 top_p=0.6,
                 top_k=20,
                 repeat_penalty=1.05,
@@ -319,8 +336,8 @@ def translate_text(text: str, context: str = "", game_name: str = "") -> str:
         result = response["choices"][0]["text"].strip()
         result = re.sub(r"^(Turkish translation|Translation|Türkçe çeviri|Çeviri)\s*:\s*", "", result, flags=re.IGNORECASE)
         for marker, replacement in tokens:
-            if marker not in result:
-                raise LocalTranslationError("Model bir oyun terimini veya yer tutucuyu koruyamadı; bu metin güvenli biçimde çevrilmedi.")
+            if result.count(marker) != 1:
+                raise LocalTranslationError("Model bir oyun terimini veya yer tutucuyu kaybetti ya da çoğalttı; metin güvenli biçimde çevrilmedi.")
             result = result.replace(marker, replacement)
         issues = validate_translation(original_text, result)
         if issues:
@@ -345,28 +362,30 @@ def set_glossary_term(source: str, target: str) -> None:
         raise ValueError("Kaynak terim ve Türkçe karşılığı boş olamaz.")
     path = APP_DATA / "glossary.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        custom = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if not isinstance(custom, dict):
+    with _GLOSSARY_LOCK:
+        try:
+            custom = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+            if not isinstance(custom, dict):
+                custom = {}
+        except (OSError, ValueError):
             custom = {}
-    except (OSError, ValueError):
-        custom = {}
-    custom[source] = target
-    temp = path.with_suffix(".tmp")
-    temp.write_text(json.dumps(custom, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp.replace(path)
+        custom[source] = target
+        temp = path.with_suffix(".tmp")
+        temp.write_text(json.dumps(custom, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp.replace(path)
 
 
 def delete_glossary_term(source: str) -> None:
     path = APP_DATA / "glossary.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        custom = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        if not isinstance(custom, dict):
-            custom = {}
-        custom[source] = None
-        temp = path.with_suffix(".tmp")
-        temp.write_text(json.dumps(custom, ensure_ascii=False, indent=2), encoding="utf-8")
-        temp.replace(path)
-    except (OSError, ValueError):
-        return
+    with _GLOSSARY_LOCK:
+        try:
+            custom = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+            if not isinstance(custom, dict):
+                custom = {}
+            custom[source] = None
+            temp = path.with_suffix(".tmp")
+            temp.write_text(json.dumps(custom, ensure_ascii=False, indent=2), encoding="utf-8")
+            temp.replace(path)
+        except (OSError, ValueError):
+            return
