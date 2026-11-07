@@ -260,18 +260,21 @@ class TranslationStudio(QDialog):
         generation = self._scan_generation
         worker = TextScanWorker(self.game.path, self)
         self.scan_worker = worker
-        worker.completed.connect(lambda found, token=generation: self.scan_completed(found, token))
-        worker.failed.connect(lambda message, token=generation: self.scan_failed(message, token))
-        worker.finished.connect(lambda token=generation, current=worker: self._scan_thread_finished(token, current))
+        worker.generation = generation
+        worker.completed.connect(self.scan_completed)
+        worker.failed.connect(self.scan_failed)
+        worker.finished.connect(self._scan_thread_finished)
+        worker.finished.connect(worker.deleteLater)
         worker.start()
 
-    def _scan_thread_finished(self, generation, worker):
-        if generation == self._scan_generation and self.scan_worker is worker:
+    def _scan_thread_finished(self):
+        worker = self.sender()
+        if worker is self.scan_worker:
             self.scan_worker = None
-        worker.deleteLater()
 
-    def scan_completed(self, found, generation=None):
-        if generation is not None and generation != self._scan_generation:
+    def scan_completed(self, found):
+        worker = self.sender()
+        if worker is not None and worker is not self.scan_worker:
             return
         existing = {entry.entry_id: entry for entry in self.entries}
         merged = []
@@ -288,8 +291,9 @@ class TranslationStudio(QDialog):
         self._set_scan_busy(False)
         self.refresh_model_status()
 
-    def scan_failed(self, message, generation=None):
-        if generation is not None and generation != self._scan_generation:
+    def scan_failed(self, message):
+        worker = self.sender()
+        if worker is not None and worker is not self.scan_worker:
             return
         self._set_scan_busy(False)
         self.status.setText("Metin taraması başarısız.")
