@@ -308,6 +308,8 @@ class MainWindow(QMainWindow):
         self.nav_patch.style().polish(self.nav_patch)
 
     def start_scan(self):
+        if self.worker and self.worker.isRunning():
+            return
         self.scan_btn.setEnabled(False)
         self.scan_btn.setText("Taranıyor…")
         self.library_status.setText("Oyun kütüphaneleri taranıyor…")
@@ -319,6 +321,9 @@ class MainWindow(QMainWindow):
     def scan_finished(self, games):
         self.studio_btn.setEnabled(False)
         self.install_btn.setEnabled(False)
+        self.table.clearSelection()
+        self.table.setCurrentCell(-1, -1)
+        self.target_label.setText("Önce Oyun kütüphanesi bölümünden bir oyun seç.")
         self.games = games
         self.game_count.value.setText(str(len(games)))
         self.render_games()
@@ -392,6 +397,8 @@ class MainWindow(QMainWindow):
         except PatchError as exc:
             self.patch_path = None
             self.patch_manifest = None
+            self.patch_file_label.setText("Geçerli bir yama paketi seçilmedi.")
+            self.patch_info.setText("Paket okunamadı. Başka bir ZIP seçebilirsin.")
             self.install_btn.setEnabled(False)
             QMessageBox.warning(self, APP_NAME, str(exc))
 
@@ -438,7 +445,6 @@ def main():
     app.setApplicationName(APP_NAME)
     window = MainWindow()
     window.show()
-    QTimer.singleShot(300, window.start_scan)
     sys.exit(app.exec())
 
 
