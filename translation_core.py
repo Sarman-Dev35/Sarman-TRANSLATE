@@ -38,7 +38,15 @@ def _is_translatable(value: str) -> bool:
         return False
     if value.startswith(("http://", "https://", "www.")):
         return False
-    if value.startswith(("GUID:", "0x")):
+    if value.startswith(("GUID:", "0x", "http://", "https://")):
+        return False
+    if re.match(r"^[A-Za-z]:[\\\\/]", value) or value.startswith(("./", "../", "/")):
+        return False
+    if value.casefold() in {"true", "false", "yes", "no", "on", "off", "enabled", "disabled", "null", "none"}:
+        return False
+    if re.fullmatch(r"[-+]?\\d+(?:\\.\\d+)?", value):
+        return False
+    if re.search(r"\\.(?:exe|dll|pak|png|jpe?g|asset|dat|bin)$", value, re.IGNORECASE):
         return False
     return True
 
