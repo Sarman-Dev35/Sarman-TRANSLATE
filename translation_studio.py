@@ -4,19 +4,95 @@ import json
 import hashlib
 from pathlib import Path
 
-import credential_store
 from PySide6.QtCore import QThread, Signal, Qt, QTimer
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
-    QTableWidgetItem, QHeaderView, QMessageBox, QFileDialog, QProgressBar
+    QTableWidgetItem, QHeaderView, QMessageBox, QFileDialog, QProgressBar, QLineEdit
 )
 
 from translation_core import TextEntry, scan_game_texts, load_workspace, save_workspace, build_translated_files, create_translation_patch, validate_translation
-from gemini_translator import translate_batch, GeminiTranslationError
-from quota_testing import quota_test_remaining
-from engine_support import inspect_game_engine
+from local_engine import translate_text, model_status, install_english_turkish_model, LocalTranslationError, glossary_items, set_glossary_term, delete_glossary_term
 
-SERVICE = "Sarman.TRANSLATE.Gemini"
+
+class GlossaryDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Sarman · Terim Sözlüğü")
+        self.resize(560, 480)
+        root = QVBoxLayout(self)
+        title = QLabel("Oyun terimleri")
+        title.setStyleSheet("font-size:19px;font-weight:750;color:#e58a43")
+        root.addWidget(title)
+        root.addWidget(QLabel("Eklediğin karşılıklar bütün çevirilerde tutarlı biçimde kullanılır. Var olan terimi aynı İngilizce ifadeyle ekleyerek güncelleyebilirsin."))
+        self.table = QTableWidget(0, 2)
+        self.table.setHorizontalHeaderLabels(["İNGİLİZCE TERİM", "TÜRKÇE KARŞILIĞI"])
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        root.addWidget(self.table, 1)
+        fields = QHBoxLayout()
+        self.source_input = QLineEdit()
+        self.source_input.setPlaceholderText("İngilizce terim")
+        self.target_input = QLineEdit()
+        self.target_input.setPlaceholderText("Türkçe karşılığı")
+        fields.addWidget(self.source_input)
+        fields.addWidget(self.target_input)
+        root.addLayout(fields)
+        actions = QHBoxLayout()
+        add_btn = QPushButton("Terimi ekle / güncelle")
+        add_btn.setObjectName("primary")
+        add_btn.clicked.connect(self.add_term)
+        remove_btn = QPushButton("Seçileni sil")
+        remove_btn.clicked.connect(self.remove_term)
+        close_btn = QPushButton("Kapat")
+        close_btn.clicked.connect(self.accept)
+        actions.addWidget(add_btn)
+        actions.addWidget(remove_btn)
+        actions.addStretch()
+        actions.addWidget(close_btn)
+        root.addLayout(actions)
+        self.setStyleSheet("""
+            QDialog,QWidget{background:#0c0d10;color:#eeeae5;font-family:'Segoe UI';}
+            QTableWidget{background:#111216;border:1px solid #292a30;selection-background-color:#35271d;}
+            QHeaderView::section{background:#17181d;color:#e58a43;padding:9px;border:0;}
+            QLineEdit{background:#141519;border:1px solid #34353c;border-radius:7px;padding:9px;color:#fff;}
+            QPushButton{background:#1a1b20;border:1px solid #34353c;border-radius:7px;padding:9px 12px;}
+            QPushButton#primary{background:#e58a43;color:#1a120c;border:0;font-weight:800;}
+        """)
+        self.reload_terms()
+
+    def reload_terms(self):
+        terms = glossary_items()
+        self.table.setRowCount(len(terms))
+        for row, (source, target) in enumerate(terms):
+            self.table.setItem(row, 0, QTableWidgetItem(source))
+            self.table.setItem(row, 1, QTableWidgetItem(target))
+
+    def add_term(self):
+        source, target = self.source_input.text().strip(), self.target_input.text().strip()
+        if not source or not target:
+            QMessageBox.information(self, "Terim sözlüğü", "İki alanı da doldur.")
+            return
+        try:
+            set_glossary_term(source, target)
+            self.source_input.clear()
+            self.target_input.clear()
+            self.reload_terms()
+        except Exception as exc:
+            QMessageBox.warning(self, "Terim sözlüğü", str(exc))
+
+    def remove_term(self):
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.information(self, "Terim sözlüğü", "Önce silmek istediğin terimi seç.")
+            return
+        source = self.table.item(row, 0).text()
+        answer = QMessageBox.question(self, "Terim silinsin mi?", f"'{source}' sözlükten kaldırılsın mı?",
+                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer == QMessageBox.Yes:
+            delete_glossary_term(source)
+            self.reload_terms()
 
 
 class TextScanWorker(QThread):
@@ -37,62 +113,54 @@ class TextScanWorker(QThread):
 class TranslateWorker(QThread):
     progress = Signal(int, int, str)
     row_done = Signal(int, str)
-    paused = Signal(str)
     failed = Signal(str)
     completed = Signal()
 
-    def __init__(self, entries, api_key, model, indices, simulate_quota=False):
+    def __init__(self, entries, indices, game_name):
         super().__init__()
         self.entries = entries
-        self.api_key = api_key
-        self.model = model
         self.indices = indices
-        self.simulate_quota = simulate_quota
+        self.game_name = game_name
 
     def run(self):
-        if self.simulate_quota:
-            self.paused.emit("TEST_QUOTA_SIMULATION")
-            return
-        total = len(self.indices)
-        completed = 0
-        groups: dict[str, list[int]] = {}
-        memory: dict[str, str] = {}
-        for entry in self.entries:
-            if entry.translated.strip() and not validate_translation(entry.source, entry.translated):
-                memory.setdefault(entry.source, entry.translated)
+        groups = {}
         for index in self.indices:
-            groups.setdefault(self.entries[index].source, []).append(index)
-        pending = []
-        for source, indices in groups.items():
-            if source in memory:
-                for index in indices:
-                    self.row_done.emit(index, memory[source])
-                completed += len(indices)
-                self.progress.emit(completed, total, source[:80])
-            else:
-                pending.append((source, indices))
-        batch_size = 5
-        for offset in range(0, len(pending), batch_size):
-            chunk = pending[offset:offset + batch_size]
-            payload = [(str(indices[0]), source) for source, indices in chunk]
+            entry = self.entries[index]
+            nearby = []
+            for other_index in range(max(0, index - 2), min(len(self.entries), index + 3)):
+                other = self.entries[other_index]
+                if other_index != index and other.file == entry.file and other.source.strip():
+                    nearby.append(other.source)
+            context = "\n".join(nearby)
+            groups.setdefault((entry.source, context), []).append(index)
+
+        total = len(self.indices)
+        done = 0
+        for (source, context), indices in groups.items():
             try:
-                translated = translate_batch(self.api_key, self.model, payload)
-                for source, indices in chunk:
-                    result = translated[str(indices[0])]
-                    memory[source] = result
-                    for index in indices:
-                        self.row_done.emit(index, result)
-                    completed += len(indices)
-                    self.progress.emit(completed, total, source[:80])
-            except GeminiTranslationError as exc:
-                if exc.quota:
-                    self.paused.emit(str(exc))
-                else:
-                    source, indices = chunk[0]
-                    first = self.entries[indices[0]]
-                    self.failed.emit(f"{first.file} · {first.locator}: {exc}")
+                result = translate_text(source, context=context, game_name=self.game_name)
+                for index in indices:
+                    self.row_done.emit(index, result)
+                    done += 1
+                self.progress.emit(done, total, source[:72])
+            except LocalTranslationError as exc:
+                entry = self.entries[indices[0]]
+                self.failed.emit(f"{entry.file} · {entry.locator}: {exc}")
                 return
         self.completed.emit()
+
+
+class ModelInstallWorker(QThread):
+    completed = Signal()
+    failed = Signal(str)
+    progress = Signal(int, int)
+
+    def run(self):
+        try:
+            install_english_turkish_model(lambda done, total: self.progress.emit(done, total))
+            self.completed.emit()
+        except Exception as exc:
+            self.failed.emit(str(exc))
 
 
 class TranslationStudio(QDialog):
@@ -113,6 +181,7 @@ class TranslationStudio(QDialog):
         self.resize(1050, 700)
         self._build()
         self._load_existing()
+        self.refresh_model_status()
 
     @staticmethod
     def _safe_name(value):
@@ -124,19 +193,6 @@ class TranslationStudio(QDialog):
         title.setStyleSheet("font-size:20px;font-weight:800;color:#e58a43")
         root.addWidget(title)
         root.addWidget(QLabel("Desteklenen metin dosyaları salt okunur biçimde taranır. Orijinal oyun dosyaları çeviri sırasında değiştirilmez."))
-        self.engine_info = QLabel("Oyun motoru ve dosya uyumluluğu inceleniyor…")
-        self.engine_info.setWordWrap(True)
-        self.engine_info.setStyleSheet("color:#dca879;background:#211b16;border:1px solid #493323;border-radius:7px;padding:9px;")
-        root.addWidget(self.engine_info)
-        try:
-            report = inspect_game_engine(self.game.path)
-            self.engine_info.setText(
-                f"Motor: {report.engine} · Güven: {report.confidence} · {report.status}\\n"
-                f"Desteklenen metin dosyası: {report.supported_text_files} · Özel motor dosyası: {report.native_localization_files}\\n"
-                f"{report.guidance}"
-            )
-        except (OSError, ValueError) as exc:
-            self.engine_info.setText(f"Motor analizi yapılamadı: {exc}")
         actions = QHBoxLayout()
         self.scan_btn = QPushButton("Metinleri tara")
         self.scan_btn.clicked.connect(self.scan)
@@ -144,11 +200,16 @@ class TranslationStudio(QDialog):
         self.translate_btn.clicked.connect(self.translate_pending)
         self.export_btn = QPushButton("Yama ZIP'i oluştur")
         self.export_btn.clicked.connect(self.export_patch)
-        self.save_btn = QPushButton("Çalışmayı kaydet")
-        self.save_btn.clicked.connect(self.save)
-        for button in (self.scan_btn, self.translate_btn, self.save_btn, self.export_btn):
+        self.glossary_btn = QPushButton("Terim sözlüğü")
+        self.glossary_btn.clicked.connect(self.manage_glossary)
+        self.model_btn = QPushButton("Çeviri modelini indir · 1,13 GB")
+        self.model_btn.clicked.connect(self.install_model)
+        for button in (self.scan_btn, self.translate_btn, self.model_btn, self.glossary_btn, self.export_btn):
             actions.addWidget(button)
         root.addLayout(actions)
+        self.model_status_label = QLabel("")
+        self.model_status_label.setStyleSheet("color:#b9a18d;padding:4px;")
+        root.addWidget(self.model_status_label)
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["DURUM", "DOSYA / KONUM", "KAYNAK METİN", "TÜRKÇE ÇEVİRİ"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -210,6 +271,7 @@ class TranslationStudio(QDialog):
         self.save()
         self.status.setText(f"Tarama tamamlandı · {len(self.entries)} metin bulundu.")
         self._set_scan_busy(False)
+        self.refresh_model_status()
 
     def scan_failed(self, message):
         self._set_scan_busy(False)
@@ -258,18 +320,45 @@ class TranslationStudio(QDialog):
             else:
                 QMessageBox.warning(self, "Kaydetme", str(exc))
 
+    def manage_glossary(self):
+        GlossaryDialog(self).exec()
+
+    def refresh_model_status(self):
+        info = model_status()
+        self.model_status_label.setText(info["message"] + "  ·  İlk kurulum internet gerektirir; sonrasında çevrimdışı çalışır.")
+        self.model_btn.setVisible(not info["installed"])
+        self.model_btn.setEnabled(not info["installed"])
+        self.translate_btn.setEnabled(info["installed"] and bool(self.entries))
+
+    def install_model(self):
+        if self.worker and self.worker.isRunning():
+            return
+        self.model_btn.setEnabled(False)
+        self.status.setText("Hy-MT2 İngilizce → Türkçe çeviri modeli indiriliyor…")
+        self.worker = ModelInstallWorker(self)
+        self.worker.completed.connect(self._model_installed)
+        self.worker.failed.connect(self._model_install_failed)
+        self.worker.progress.connect(self._model_download_progress)
+        self.worker.start()
+
+    def _model_download_progress(self, downloaded, total):
+        if total > 0:
+            percent = min(100, int(downloaded * 100 / total))
+            self.model_status_label.setText(f"Model indiriliyor… %{percent}  ·  {downloaded // (1024*1024)} / {total // (1024*1024)} MB")
+
+    def _model_installed(self):
+        self.status.setText("Hy-MT2 hazır. Artık internet olmadan çeviri yapabilirsin.")
+        self.refresh_model_status()
+
+    def _model_install_failed(self, message):
+        self.status.setText("Model kurulumu başarısız.")
+        self.model_btn.setEnabled(True)
+        QMessageBox.warning(self, "Çeviri modeli", message)
+
     def translate_pending(self):
-        try:
-            api_key = credential_store.get_password(SERVICE, "user-api-key")
-            model = credential_store.get_password(SERVICE, "model")
-        except Exception as exc:
-            QMessageBox.warning(self, "Gemini API", f"Windows kimlik bilgisi kasası açılamadı: {exc}")
-            return
-        if not api_key:
-            QMessageBox.information(self, "Gemini API", "Önce Ayarlar > Gemini API bölümünden kendi API anahtarını kaydet.")
-            return
-        if not model:
-            QMessageBox.information(self, "Gemini API", "Önce Gemini API ayarlarında bağlantıyı test et ve kullanılabilir bir model seç.")
+        info = model_status()
+        if not info["installed"]:
+            QMessageBox.information(self, "Çeviri modeli", "Önce yaklaşık 1,13 GB boyutundaki Hy-MT2 çeviri modelini indir.")
             return
         indices = [i for i, entry in enumerate(self.entries) if entry.status != "translated" or not entry.translated]
         if not indices:
@@ -277,10 +366,9 @@ class TranslationStudio(QDialog):
             return
         self._set_busy(True)
         self.progress.setRange(0, len(indices))
-        self.worker = TranslateWorker(self.entries, api_key, model, indices, simulate_quota=quota_test_remaining() > 0)
+        self.worker = TranslateWorker(self.entries, indices, self.game.name)
         self.worker.progress.connect(self._translation_progress)
         self.worker.row_done.connect(self._translation_done)
-        self.worker.paused.connect(self._quota_paused)
         self.worker.failed.connect(self._translation_failed)
         self.worker.completed.connect(self._translation_completed)
         self.worker.start()
@@ -304,36 +392,20 @@ class TranslationStudio(QDialog):
         self.progress.setValue(completed)
         self.status.setText(f"{completed}/{total} çevrildi · {current_text}")
 
-    def _quota_paused(self, message):
-        self._set_busy(False)
-        self.autosave_timer.stop()
-        self.save()
-        if message == "TEST_QUOTA_SIMULATION":
-            self.status.setText("TEST MODU — Çeviri API isteği gönderilmeden duraklatıldı. Çalışma kaydedildi.")
-            QMessageBox.information(
-                self, "Kota duraklatma testi",
-                "Test başarılı: çeviri kuyruğu güvenli biçimde duraklatıldı ve çalışma kaydedildi. "
-                "Bu test Gemini API'ye istek göndermedi, gerçek kotanı tüketmedi. "
-                "Bekleme süresi sona erdiğinde 'Bekleyenleri çevir' düğmesiyle devam edebilirsin."
-            )
-            return
-        self.status.setText("Kota nedeniyle duraklatıldı. Tamamlanan çeviriler kaydedildi.")
-        QMessageBox.warning(self, "Gemini kotası", "API isteği kota sınırına takıldı. İlerleme kaydedildi. Google API erişimi tekrar kullanılabilir olduğunda veya farklı bir projeye ait uygun anahtar eklediğinde bekleyenleri sürdürebilirsin.\n\n" + message)
-
     def _translation_failed(self, message):
         self._set_busy(False)
         self.autosave_timer.stop()
         self.save()
-        QMessageBox.warning(self, "Çeviri hatası", message)
+        QMessageBox.warning(self, "Yerel çeviri hatası", message)
 
     def _translation_completed(self):
         self._set_busy(False)
         self.autosave_timer.stop()
         self.save()
-        self.status.setText("Çeviri kuyruğu tamamlandı. Çevirileri gözden geçir.")
+        self.status.setText("Yapay zekâ çevirisi tamamlandı. Terimleri ve kelime oyunlarını gözden geçir.")
 
     def _set_busy(self, busy):
-        for button in (self.scan_btn, self.translate_btn, self.export_btn):
+        for button in (self.scan_btn, self.translate_btn, self.export_btn, self.model_btn, self.glossary_btn):
             button.setEnabled(not busy)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers if busy else (QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed))
 

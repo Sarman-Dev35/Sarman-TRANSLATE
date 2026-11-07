@@ -1,6 +1,5 @@
 import json
 import io
-import urllib.error
 import tempfile
 import unittest
 import zipfile
@@ -9,7 +8,6 @@ from unittest.mock import patch
 
 import patch_manager
 from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest, installed_patch_languages
-from gemini_translator import GeminiTranslationError, translate_batch
 from translation_core import (
     TextEntry, scan_game_texts, validate_translation, save_workspace,
     load_workspace, build_translated_files, create_translation_patch, StaleSourceError,
@@ -33,70 +31,6 @@ class TranslationCoreTests(unittest.TestCase):
             (root / "strings.json").write_text('{"title":"New Game","id":"ABC123","items":["Load","Exit"]}', encoding="utf-8")
             entries = scan_game_texts(root)
             self.assertEqual({e.source for e in entries}, {"New Game", "Load", "Exit"})
-
-    def test_gemini_batch_response_and_placeholders(self):
-        class Response:
-            def __enter__(self): return self
-            def __exit__(self, *args): return False
-            def read(self):
-                result = {"translations": [
-                    {"id": "row1", "text": "Merhaba {player}"},
-                    {"id": "row2", "text": "Yükle %s"}
-                ]}
-                payload = {"candidates": [{"content": {"parts": [{"text": json.dumps(result, ensure_ascii=False)}]}}]}
-                return json.dumps(payload).encode("utf-8")
-        with patch("gemini_translator.urllib.request.urlopen", return_value=Response()):
-            result = translate_batch("fake-key", "gemini-test", [("row1", "Hello {player}"), ("row2", "Load %s")])
-        self.assertEqual(result["row1"], "Merhaba {player}")
-        self.assertEqual(result["row2"], "Yükle %s")
-
-    def test_gemini_falls_back_when_json_response_mode_is_unsupported(self):
-        class Response:
-            def __enter__(self): return self
-            def __exit__(self, *args): return False
-            def read(self):
-                payload = {"candidates": [{"content": {"parts": [{"text": json.dumps({
-                    "translations": [{"id": "fallback-row", "text": "Merhaba"}]
-                })}]}}]}
-                return json.dumps(payload).encode("utf-8")
-        error = urllib.error.HTTPError(
-            "https://generativelanguage.googleapis.com", 400, "Bad Request", {},
-            io.BytesIO(b"responseMimeType application/json is not supported")
-        )
-        with patch("gemini_translator.urllib.request.urlopen", side_effect=[error, Response()]) as request:
-            result = translate_batch("fake-key", "gemini-test", [("fallback-row", "Hello")])
-        self.assertEqual(result["fallback-row"], "Merhaba")
-        self.assertEqual(request.call_count, 2)
-        self.assertNotIn("application/json", request.call_args_list[1].args[0].data.decode("utf-8"))
-
-    def test_gemini_retries_transient_http_408(self):
-        class Response:
-            def __enter__(self): return self
-            def __exit__(self, *args): return False
-            def read(self):
-                payload = {"candidates": [{"content": {"parts": [{"text": json.dumps({
-                    "translations": [{"id": "retry-row", "text": "Merhaba"}]
-                })}]}}]}
-                return json.dumps(payload).encode("utf-8")
-        error = urllib.error.HTTPError(
-            "https://generativelanguage.googleapis.com", 408, "Request Timeout", {}, io.BytesIO(b"timeout")
-        )
-        with patch("gemini_translator.urllib.request.urlopen", side_effect=[error, Response()]) as request, patch("gemini_translator.time.sleep"):
-            result = translate_batch("fake-key", "gemini-test", [("retry-row", "Hello")])
-        self.assertEqual(result["retry-row"], "Merhaba")
-        self.assertEqual(request.call_count, 2)
-
-    def test_gemini_batch_rejects_lost_placeholders(self):
-        class Response:
-            def __enter__(self): return self
-            def __exit__(self, *args): return False
-            def read(self):
-                result = {"translations": [{"id": "row1", "text": "Merhaba"}]}
-                payload = {"candidates": [{"content": {"parts": [{"text": json.dumps(result)}]}}]}
-                return json.dumps(payload).encode("utf-8")
-        with patch("gemini_translator.urllib.request.urlopen", return_value=Response()):
-            with self.assertRaises(GeminiTranslationError):
-                translate_batch("fake-key", "gemini-test", [("row1", "Hello {player}")])
 
     def test_placeholder_validation(self):
         self.assertEqual(validate_translation("Hello {player_name}", "Merhaba {player_name}"), [])

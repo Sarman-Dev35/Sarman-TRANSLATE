@@ -271,3 +271,25 @@ def installed_patch_languages(game_dir: str | Path) -> set[str]:
     except OSError:
         return found
     return found
+
+
+def uninstall_all(game_dir: str | Path) -> list[str]:
+    """Restore every active Sarman patch for a game, newest first, then remove its journals."""
+    root = Path(game_dir).resolve()
+    base = APP_DATA / "backups"
+    states = []
+    if not base.exists():
+        return []
+    for state_path in base.glob("*/**/install.json"):
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            if isinstance(state, dict) and state.get("schema") == 1 and Path(state.get("game_dir", "")).resolve() == root:
+                states.append((state_path.stat().st_mtime_ns, state_path, state))
+        except (OSError, ValueError, TypeError):
+            continue
+    names = []
+    for _, state_path, state in sorted(states, key=lambda item: item[0], reverse=True):
+        _restore_state(root, state_path.parent, state, strict=True)
+        names.append(str(state.get("name", "Yama")))
+        shutil.rmtree(state_path.parent)
+    return names

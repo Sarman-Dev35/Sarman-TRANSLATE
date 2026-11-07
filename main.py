@@ -14,8 +14,7 @@ from PySide6.QtWidgets import (
     QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QTabWidget
 )
 
-from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest, installed_patch_languages
-from gemini_settings import GeminiSettingsDialog
+from patch_manager import PatchError, inspect_patch, install_patch, uninstall_latest, uninstall_all, installed_patch_languages
 from translation_studio import TranslationStudio
 
 APP_NAME = "Sarman TRANSLATE"
@@ -123,16 +122,12 @@ class MainWindow(QMainWindow):
         side.addWidget(nav_title)
         self.nav_library = QPushButton("▦   Oyun kütüphanesi")
         self.nav_patch = QPushButton("⇧   Yama merkezi")
-        self.nav_settings = QPushButton("⚙   Gemini API")
         self.nav_library.setObjectName("navActive")
         self.nav_patch.setObjectName("navButton")
-        self.nav_settings.setObjectName("navButton")
         self.nav_library.clicked.connect(lambda: self.pages.setCurrentIndex(0))
         self.nav_patch.clicked.connect(lambda: self.pages.setCurrentIndex(1))
-        self.nav_settings.clicked.connect(self.open_gemini_settings)
         side.addWidget(self.nav_library)
         side.addWidget(self.nav_patch)
-        side.addWidget(self.nav_settings)
         side.addStretch()
         version = QLabel("DESKTOP  ·  ÖN SÜRÜM\nYerelleştirme araçları")
         version.setObjectName("sideFoot")
@@ -148,7 +143,7 @@ class MainWindow(QMainWindow):
         heading = QVBoxLayout()
         self.page_title = QLabel("Oyun kütüphanesi")
         self.page_title.setObjectName("pageTitle")
-        self.page_subtitle = QLabel("Kurulu oyunlarını otomatik bul; dil dosyalarını ve Sarman yama durumunu görüntüle.")
+        self.page_subtitle = QLabel("Oyununu seç, metinleri tara ve Türkçe yamayı oluştur.")
         self.page_subtitle.setObjectName("muted")
         heading.addWidget(self.page_title)
         heading.addWidget(self.page_subtitle)
@@ -169,27 +164,6 @@ class MainWindow(QMainWindow):
         library = QWidget()
         lib = QVBoxLayout(library)
         lib.setContentsMargins(0, 0, 0, 0)
-        hero = QFrame()
-        hero.setObjectName("hero")
-        h = QVBoxLayout(hero)
-        h.setContentsMargins(23, 20, 23, 20)
-        eyebrow = QLabel("SARMAN  /  GAME LIBRARY")
-        eyebrow.setObjectName("eyebrow")
-        title = QLabel("Oyunlarını keşfet.")
-        title.setObjectName("heroTitle")
-        desc = QLabel("Uygulama kurulu oyunlarını desteklenen platform kayıtlarından otomatik bulur. Algılanan dil dosyaları ve Sarman yamalarının durumu listelenir. Tarama oyun dosyalarını değiştirmez; dil ipuçları oyunun menüde o dili sunduğunu tek başına kanıtlamaz.")
-        desc.setObjectName("muted")
-        desc.setWordWrap(True)
-        h.addWidget(eyebrow)
-        h.addWidget(title)
-        h.addWidget(desc)
-        lib.addWidget(hero)
-        stats = QHBoxLayout()
-        self.game_count = StatCard("Bulunan oyun", "0")
-        self.source_count = StatCard("Tarama kaynakları", "Steam  ·  Epic  ·  Microsoft Store  ·  Xbox  ·  Windows")
-        stats.addWidget(self.game_count)
-        stats.addWidget(self.source_count, 2)
-        lib.addLayout(stats)
         row = QHBoxLayout()
         label = QLabel("Oyun listen")
         label.setObjectName("sectionTitle")
@@ -206,13 +180,11 @@ class MainWindow(QMainWindow):
         self.studio_btn.clicked.connect(self.open_translation_studio)
         row.addWidget(self.studio_btn)
         lib.addLayout(row)
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["OYUN", "KAYNAK", "KURULUM KONUMU", "ALGILANAN DİLLER", "SARMAN YAMASI"])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.table = QTableWidget(0, 3)
+        self.table.setHorizontalHeaderLabels(["OYUN", "PLATFORM", "DİL / YAMA DURUMU"])
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -228,21 +200,6 @@ class MainWindow(QMainWindow):
         patch_page = QWidget()
         patch_layout = QVBoxLayout(patch_page)
         patch_layout.setContentsMargins(0, 0, 0, 0)
-        patch_hero = QFrame()
-        patch_hero.setObjectName("hero")
-        ph = QVBoxLayout(patch_hero)
-        ph.setContentsMargins(23, 20, 23, 20)
-        eyebrow2 = QLabel("SARMAN  /  PATCH CENTER")
-        eyebrow2.setObjectName("eyebrow")
-        patch_title = QLabel("Hazır yamayı yükle.")
-        patch_title.setObjectName("heroTitle")
-        patch_desc = QLabel("Başka bir yerden indirdiğin uyumlu Sarman yama paketini seç, hedef oyunu belirle ve yükle. Uygulama mevcut dosyaların yedeğini alır; desteklenen yamalar geri alınabilir.")
-        patch_desc.setObjectName("muted")
-        patch_desc.setWordWrap(True)
-        ph.addWidget(eyebrow2)
-        ph.addWidget(patch_title)
-        ph.addWidget(patch_desc)
-        patch_layout.addWidget(patch_hero)
         package = QFrame()
         package.setObjectName("panel")
         pl = QVBoxLayout(package)
@@ -275,8 +232,11 @@ class MainWindow(QMainWindow):
         self.install_btn.clicked.connect(self.apply_patch)
         self.uninstall_btn = QPushButton("Son yamayı geri al")
         self.uninstall_btn.clicked.connect(self.rollback_patch)
+        self.uninstall_all_btn = QPushButton("Tüm yamaları kaldır")
+        self.uninstall_all_btn.clicked.connect(self.remove_all_patches)
         actions.addWidget(self.install_btn)
         actions.addWidget(self.uninstall_btn)
+        actions.addWidget(self.uninstall_all_btn)
         actions.addStretch()
         tl.addLayout(actions)
         patch_layout.addWidget(target)
@@ -326,10 +286,6 @@ class MainWindow(QMainWindow):
             return
         event.accept()
 
-    def open_gemini_settings(self):
-        dialog = GeminiSettingsDialog(self)
-        dialog.exec()
-
     def page_changed(self, index):
         is_patch = index == 1
         self.page_title.setText("Yama merkezi" if is_patch else "Oyun kütüphanesi")
@@ -359,7 +315,6 @@ class MainWindow(QMainWindow):
         self.table.setCurrentCell(-1, -1)
         self.target_label.setText("Önce Oyun kütüphanesi bölümünden bir oyun seç.")
         self.games = games
-        self.game_count.value.setText(str(len(games)))
         self.render_games()
         self.library_status.setText(f"Tarama tamamlandı · {len(games)} oyun bulundu")
         self.scan_btn.setEnabled(True)
@@ -379,23 +334,24 @@ class MainWindow(QMainWindow):
             patched = installed_patch_languages(game.path)
             detected = " · ".join(game.detected_languages) if game.detected_languages else "Belirlenemedi"
             patch_status = " · ".join(code.upper() for code in sorted(patched)) + " yüklü" if patched else "Yüklü değil"
-            values = (game.name, game.platform, game.path, detected, patch_status)
+            status = f"{detected}  ·  {patch_status}"
+            values = (game.name, game.platform, status)
             for col, value in enumerate(values):
                 cell = QTableWidgetItem(value)
                 cell.setToolTip(value)
                 if col == 0:
                     cell.setFont(QFont("Segoe UI", 10, QFont.DemiBold))
                 self.table.setItem(row, col, cell)
+            self.table.item(row, 0).setData(Qt.UserRole, game.path)
 
     def selected_game(self):
         row = self.table.currentRow()
         if row < 0:
             return None
         name_item = self.table.item(row, 0)
-        path_item = self.table.item(row, 2)
-        if not name_item or not path_item:
+        if not name_item:
             return None
-        path = path_item.text()
+        path = name_item.data(Qt.UserRole)
         return next((g for g in self.games if g.path == path), None)
 
     def selection_changed(self):
@@ -455,6 +411,27 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, APP_NAME, f"{result['name']} yüklendi.\nYedek: {result['backup']}")
         except (PatchError, OSError) as exc:
             QMessageBox.critical(self, APP_NAME, f"Yama yüklenemedi:\n{exc}")
+
+    def remove_all_patches(self):
+        game = self.selected_game()
+        if not game:
+            QMessageBox.information(self, APP_NAME, "Önce oyun listesinden bir oyun seç.")
+            return
+        answer = QMessageBox.question(
+            self, "Tüm Sarman yamaları kaldırılsın mı?",
+            f"'{game.name}' için Sarman TRANSLATE tarafından yüklenen tüm yamalar geri alınacak. "
+            "Orijinal dosyalar yedeklerden geri yüklenir. Bu işlem başka modları kaldırmaz. Devam edilsin mi?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if answer != QMessageBox.Yes:
+            return
+        try:
+            names = uninstall_all(game.path)
+            self.render_games()
+            QMessageBox.information(self, APP_NAME,
+                f"{len(names)} yama kaldırıldı." if names else "Bu oyun için kayıtlı Sarman yaması bulunamadı.")
+        except (PatchError, OSError) as exc:
+            QMessageBox.warning(self, APP_NAME, f"Yama kaldırma durdu. Dosyalar ve yedek kayıtları korundu.\n\n{exc}")
 
     def rollback_patch(self):
         game = self.selected_game()

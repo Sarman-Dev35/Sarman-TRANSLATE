@@ -1,6 +1,6 @@
 # Sarman TRANSLATE
 
-Sarman TRANSLATE, Windows için oyun yerelleştirme çalışma alanıdır. Kurulu oyunları yerel platform kayıtlarından keşfeder, desteklenen metin dosyalarını tarar, Gemini ile çeviri yapar, çevirileri doğrular ve geri alınabilir ZIP yama paketleri üretir.
+Sarman TRANSLATE, Windows için oyun yerelleştirme çalışma alanıdır. Kurulu oyunları yerel platform kayıtlarından keşfeder, desteklenen metin dosyalarını tarar, yerel sinir ağı modeliyle çeviri yapar, çevirileri doğrular ve geri alınabilir ZIP yama paketleri üretir.
 
 > Bu sürüm bir MVP'dir. Her oyun motorunu, şifreli arşivi veya çevrimiçi/anti-cheat oyununu desteklediği iddia edilmez.
 
@@ -13,14 +13,15 @@ Sarman TRANSLATE, Windows için oyun yerelleştirme çalışma alanıdır. Kurul
 - Her oyun satırında algılanan diller ve etkin Sarman yama dillerini ayrı gösterme.
 - Oyun adına, platforma ve yola göre arama.
 - JSON, CSV, TXT ve INI metin dosyalarını salt okunur tarama.
-- Çeviri Atölyesi: kaynak/çeviri tabloları, elle düzenleme, Gemini kuyruğu ve yerel çalışma kaydı.
-- Gemini model listesini API'den alma; kullanıcı kendi API anahtarını ekler.
-- Windows Credential Manager (WinVaultKeyring) içinde yerel API anahtarı saklama ve silme; güvenli Windows backend bulunmazsa anahtar kaydetmeyi reddetme.
+- Çeviri Atölyesi: kaynak/çeviri tabloları, elle düzenleme, yerel çeviri kuyruğu ve yerel çalışma kaydı.
+- Tencent Hy-MT2 1.8B (Q4_K_M, yaklaşık 1,13 GB) çeviri odaklı yerel model; ilk kurulumdan sonra çevrimdışı kullanım.
+- Tekrarlanan metinler için SQLite çeviri hafızası ve kullanıcı tarafından düzenlenebilir oyun terimleri sözlüğü.
 - Yer tutucu/biçim kodu ve satır sonu kalite kontrolü.
 - Desteklenen JSON/CSV/TXT/INI dosyalarından manifestli ZIP yama oluşturma.
 - Yama paketinde yol geçişi, symlink, dosya sayısı/boyutu, dosya türü ve UTF-8 kontrolleri.
 - Yama yüklemeden önce dosya yedeği; işlem hatasında geri sarma ve son yamayı geri alma.
-- Kota/bağlantı hatasında tamamlanan çevirileri kaydetme; daha sonra bekleyenleri sürdürme.
+- Tamamlanan çevirileri otomatik kaydetme; kesilen işlere daha sonra devam etme.
+- Seçili oyun için tüm Sarman yamalarını yedeklerden geri yükleyerek topluca kaldırma.
 
 ## Oyun keşfi ve lisanslar
 
@@ -33,16 +34,14 @@ Uygulama platform parolası istemez, istemci veritabanlarını kırmaz, lisans/D
 1. Oyun kütüphanesinde oyunu seç.
 2. **Çeviri Atölyesi** düğmesine bas.
 3. **Metinleri tara** ile desteklenen dosyaları keşfet.
-4. Ayarlar > Gemini API bölümünde kendi anahtarını ekle ve bağlantıyı test et.
-5. **Bekleyenleri çevir** ile sırayı çalıştır. Her tamamlanan satır yerel çalışma dosyasına kaydedilir.
+4. **Yerel modeli kur** ile İngilizce → Türkçe modelini bir kez indir.
+5. **Bekleyenleri çevir** ile çevrimdışı çeviriyi başlat. Terim sözlüğünden oyuna özel karşılıklar ekleyebilirsin.
 6. Çevirileri tabloda elle düzenleyip gözden geçir.
 7. **Yama ZIP'i oluştur** ile dışa aktar.
 
-Çeviri çalışma kayıtları `%LOCALAPPDATA%\Sarman\TRANSLATE\workspaces` altında tutulur. API anahtarı yalnızca Windows Credential Manager (WinVaultKeyring) üzerinden saklanır; güvenli backend yoksa kaydetme reddedilir. Anahtar kaynak koduna, oyun dosyalarına veya GitHub'a eklenmez. Beklenmeyen uygulama hataları `%LOCALAPPDATA%\Sarman\TRANSLATE\logs\application.log` dosyasına dönen günlüklerle kaydedilir.
+Çeviri çalışma kayıtları `%LOCALAPPDATA%\\Sarman\\TRANSLATE\\workspaces`, tekrar kullanılan çeviriler SQLite hafızasında, özel terimler `glossary.json` dosyasında tutulur.
 
-Gemini kotası Google Cloud projesine ve modele göre değişir. Aynı projede yeni API anahtarı oluşturmak proje kotasını artırmaz. Gerçek kota yenileme zamanı API tarafından kesin verilmediğinde uygulama tahmini geri sayım göstermez. Ücretsiz kullanımın kapsamı Google tarafından belirlenir; ücretsiz erişim veya limitsiz kullanım garantisi yoktur. Gemini model listesi `models.list` sayfaları üzerinden alınır ve `generateContent` destekleyen modeller filtrelenir; listelenen modelin ücretsiz veya bu projede kullanılabilir olduğu garanti edilmez.
-
-Kota akışını gerçek API kotasını tüketmeden denemek için Gemini API penceresindeki test komutlarından birini kullan: `/kotabitimiuyarısı1dk`, `/kotabitimiuyarısı1saat` veya `/kotabitimiuyarısıgünlük`. Sayaç çalışırken ayar penceresini kapatıp Çeviri Atölyesi'nde bekleyen çeviriyi başlat. Kuyruk API isteği göndermeden test amaçlı duraklatılır, çalışma kaydedilir; süre sona erdiğinde yeniden **Bekleyenleri çevir** ile devam edebilirsin. Bu simülasyon gerçek Gemini kotasını tüketmez.
+Yerel model ilk indirmede internet bağlantısı gerektirir. Model kurulduktan sonra çeviri API anahtarı, kota veya internet bağlantısı olmadan yapılır. Tencent Hy-MT2 1.8B çeviri modeli yaklaşık 1,13 GB indirilir ve yerel CPU üzerinde çalışır. Bu sohbet modeli değildir; yalnızca çeviri üretir. Model, aynı dosyadaki yakın diyalogları bağlam olarak kullanır; oyun terimleri sözlüğü sabit karşılıkları korur. Kelime oyunları için daha doğal yerelleştirme hedeflenir ancak otomatik çeviri kusursuz değildir. Diyalogların son kontrolü kullanıcıya bırakılır.
 
 ## Desteklenen dosya biçimleri ve sınırlar
 
@@ -105,7 +104,7 @@ Windows EXE build workflow'u yalnızca GitHub Actions içinden elle başlatılı
 
 ```powershell
 pip install -r requirements.txt
-pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --version-file version_info.txt --collect-all PySide6 --collect-all keyring --copy-metadata keyring main.py
+pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --version-file version_info.txt --collect-all PySide6 --collect-all llama_cpp main.py
 ```
 
 Çıktı: `dist/Sarman TRANSLATE/Sarman TRANSLATE.exe`

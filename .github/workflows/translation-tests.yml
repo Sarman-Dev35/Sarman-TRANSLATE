@@ -2,7 +2,7 @@ name: Translation MVP Tests
 
 on:
   push:
-    branches: [main, feature/complete-translation-mvp, feature/format-preservation-engine-readiness]
+    branches: [main, feature/complete-translation-mvp, feature/format-preservation-engine-readiness, feature/local-translation-engine-patch-management]
     paths:
       - '**.py'
       - 'requirements.txt'
@@ -26,12 +26,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install runtime UI dependencies
-        run: python -m pip install "PySide6>=6.7,<7" "keyring>=25.2,<27"
+      - name: Install application dependencies
+        run: python -m pip install -r requirements.txt
       - name: Compile Python modules
         run: python -m compileall -q .
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Windows desktop UI smoke test
         run: |
-          python -c "from PySide6.QtWidgets import QApplication; from main import MainWindow; from game_discovery import Game, discover_games; from translation_studio import TranslationStudio; from translation_core import TextEntry; from gemini_settings import GeminiSettingsDialog; import tempfile, credential_store; assert credential_store.ensure_secure_backend().__class__.__name__ == 'WinVaultKeyring'; app=QApplication([]); w=MainWindow(); assert w.pages.count()==2; assert w.table.columnCount()==5; assert not w.studio_btn.isEnabled(); d=tempfile.TemporaryDirectory(); studio=TranslationStudio(Game('Smoke Test','Test',d.name),w); assert studio.table.columnCount()==4; studio.entries=[TextEntry('smoke','sample.json','/hello','Hello')]; studio.render(); studio._translation_done(0,'Merhaba'); assert studio.table.item(0,3).text()=='Merhaba'; assert studio.autosave_timer.isActive(); studio.autosave_timer.stop(); assert isinstance(discover_games([]),list); studio.close(); settings=GeminiSettingsDialog(w); settings.close(); w.close(); d.cleanup(); print('Windows desktop and discovery smoke tests passed.')"
+          python -c "from PySide6.QtWidgets import QApplication; from main import MainWindow; from game_discovery import Game, discover_games; from translation_studio import TranslationStudio, GlossaryDialog; from translation_core import TextEntry; import tempfile; app=QApplication([]); w=MainWindow(); assert w.pages.count()==2; assert w.table.columnCount()==3; assert hasattr(w, 'uninstall_all_btn'); d=tempfile.TemporaryDirectory(); studio=TranslationStudio(Game('Smoke Test','Test',d.name),w); assert studio.table.columnCount()==4; assert hasattr(studio, 'glossary_btn'); assert hasattr(studio, 'model_btn'); glossary=GlossaryDialog(studio); assert glossary.table.columnCount()==2; glossary.close(); studio.entries=[TextEntry('smoke','sample.json','/hello','Hello')]; studio.render(); studio._translation_done(0,'Merhaba'); assert studio.table.item(0,3).text()=='Merhaba'; assert studio.autosave_timer.isActive(); studio.autosave_timer.stop(); assert isinstance(discover_games([]),list); studio.close(); w.close(); d.cleanup(); print('Windows desktop and discovery smoke tests passed.')"
