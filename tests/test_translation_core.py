@@ -158,6 +158,18 @@ class PatchManagerTests(unittest.TestCase):
             with self.assertRaises(PatchError):
                 inspect_patch(archive)
 
+    def test_rejects_windows_reserved_patch_targets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for target in ("CON.txt", "folder/LPT1.ini", "bad?.json"):
+                archive = root / (str(len(target)) + ".zip")
+                manifest = {"name": "unsafe", "version": "1", "files": [{"source": "files/a.txt", "target": target}]}
+                with zipfile.ZipFile(archive, "w") as zf:
+                    zf.writestr("sarman-patch.json", json.dumps(manifest))
+                    zf.writestr("files/a.txt", "text")
+                with self.assertRaises(PatchError):
+                    inspect_patch(archive)
+
     def test_rejects_executable_patch_targets(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
