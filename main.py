@@ -156,7 +156,7 @@ class MainWindow(QMainWindow):
         lib.addWidget(hero)
         stats = QHBoxLayout()
         self.game_count = StatCard("Bulunan oyun", "0")
-        self.source_count = StatCard("Tarama kaynakları", "Steam  ·  Epic  ·  Klasörler")
+        self.source_count = StatCard("Tarama kaynakları", "Steam  ·  Epic  ·  Microsoft Store  ·  Xbox  ·  Özel klasörler")
         stats.addWidget(self.game_count)
         stats.addWidget(self.source_count, 2)
         lib.addLayout(stats)
@@ -294,8 +294,12 @@ class MainWindow(QMainWindow):
     def load_custom_roots(self):
         try:
             data = json.loads(self._settings_path().read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return []
             roots = data.get("custom_game_roots", [])
-            return [str(Path(p)) for p in roots if Path(p).is_dir()]
+            if not isinstance(roots, list):
+                return []
+            return [str(Path(p)) for p in roots if isinstance(p, str) and Path(p).is_dir()]
         except (OSError, ValueError, TypeError):
             return []
 
@@ -356,6 +360,7 @@ class MainWindow(QMainWindow):
         self.library_status.setText("Tarama sırasında hata oluştu")
         QMessageBox.warning(self, APP_NAME, message)
         self.scan_btn.setEnabled(True)
+        self.add_folder_btn.setEnabled(True)
         self.scan_btn.setText("⟳   Yeniden tara")
 
     def render_games(self):
