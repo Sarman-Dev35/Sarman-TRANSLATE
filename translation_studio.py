@@ -50,7 +50,7 @@ class TranslateWorker(QThread):
                 other = self.entries[other_index]
                 if other_index != index and other.file == entry.file and other.source.strip():
                     nearby.append(other.source)
-            context = "\\n".join(nearby)
+            context = "\n".join(nearby)
             groups.setdefault((entry.source, context), []).append(index)
 
         total = len(self.indices)
