@@ -14,6 +14,7 @@ class Game:
     platform: str
     path: str
     app_id: str = ""
+    detected_languages: tuple[str, ...] = ()
 
 def _normal(path: Path) -> str:
     try:
@@ -217,6 +218,39 @@ def _scan_user_game_folders(extra_roots: Iterable[str] = ()) -> list[Game]:
                 continue
     return games
 
+
+_LANGUAGE_CODES = {"tr": "TR", "tur": "TR", "turkish": "TR", "tr-tr": "TR", "en": "EN", "eng": "EN", "english": "EN", "en-us": "EN", "en-gb": "EN", "de": "DE", "fr": "FR", "es": "ES", "it": "IT", "pt": "PT", "pt-br": "PT", "ru": "RU", "ja": "JA", "jp": "JA", "ko": "KO", "zh": "ZH", "zh-cn": "ZH", "pl": "PL", "nl": "NL"}
+_LANGUAGE_FILE = re.compile(r"(?:^|[._-])(tr|tur|turkish|tr-tr|en|eng|english|en-us|en-gb|de|fr|es|it|pt|pt-br|ru|ja|jp|ko|zh|zh-cn|pl|nl)(?:[._-]|$)", re.I)
+_LOCALE_DIRS = {"locale", "locales", "lang", "langs", "language", "languages", "localization", "translations", "text"}
+
+def _detect_language_files(game_root: Path) -> tuple[str, ...]:
+    found: set[str] = set()
+    scanned = 0
+    try:
+        for current, dirs, files in os.walk(game_root):
+            rel = Path(current).relative_to(game_root)
+            if len(rel.parts) > 5:
+                dirs[:] = []
+                continue
+            dirs[:] = [d for d in dirs if d.casefold() not in {"engine", "plugins", "thirdparty", "redist", "redistributable", "crashreporter", "__pycache__"}]
+            if rel.parts and not any(part.casefold() in _LOCALE_DIRS for part in rel.parts):
+                continue
+            for filename in files:
+                scanned += 1
+                if scanned > 5000:
+                    return tuple(sorted(found))
+                if Path(filename).suffix.casefold() not in {".json", ".csv", ".txt", ".ini", ".po", ".xml", ".locres"}:
+                    continue
+                match = _LANGUAGE_FILE.search(Path(filename).stem)
+                if match:
+                    code = _LANGUAGE_CODES.get(match.group(1).casefold())
+                    if code:
+                        found.add(code)
+    except (OSError, ValueError):
+        pass
+    return tuple(sorted(found))
+
+
 def discover_games(extra_roots: Iterable[str] = ()) -> list[Game]:
     """Discover installed games from local platform manifests and Windows game registrations."""
     discovered = _scan_steam() + _scan_epic() + _read_game_config_store() + _scan_xbox_games_folder() + _scan_user_game_folders(extra_roots)
@@ -229,4 +263,5 @@ def discover_games(extra_roots: Iterable[str] = ()) -> list[Game]:
             unique[key] = game
         elif any(tag in game.platform for tag in priority) and not any(tag in existing.platform for tag in priority):
             unique[key] = game
-    return sorted(unique.values(), key=lambda item: item.name.casefold())
+    enriched = [Game(name=x.name, platform=x.platform, path=x.path, app_id=x.app_id, detected_languages=_detect_language_files(Path(x.path))) for x in unique.values()]
+    return sorted(enriched, key=lambda item: item.name.casefold())
