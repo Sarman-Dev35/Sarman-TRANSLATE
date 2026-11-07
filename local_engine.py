@@ -60,28 +60,32 @@ def install_english_turkish_model(progress=None) -> None:
         return
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
     partial = MODEL_PATH.with_suffix(MODEL_PATH.suffix + ".part")
-    request = urllib.request.Request(
-        MODEL_URL,
-        headers={"User-Agent": "Sarman-TRANSLATE/0.2", "Accept": "application/octet-stream"},
-    )
+    existing = partial.stat().st_size if partial.exists() else 0
+    headers = {"User-Agent": "Sarman-TRANSLATE/0.2", "Accept": "application/octet-stream"}
+    if existing:
+        headers["Range"] = f"bytes={existing}-"
+    request = urllib.request.Request(MODEL_URL, headers=headers)
     try:
-        downloaded = 0
-        last_reported = 0
-        with urllib.request.urlopen(request, timeout=90) as response, partial.open("wb") as output:
-            total = int(response.headers.get("Content-Length") or 0)
-            while True:
-                chunk = response.read(1024 * 1024)
-                if not chunk:
-                    break
-                output.write(chunk)
-                downloaded += len(chunk)
-                if progress and (downloaded - last_reported >= 16 * 1024 * 1024 or (total and downloaded >= total)):
-                    progress(downloaded, total or MODEL_SIZE_HINT)
-                    last_reported = downloaded
-            output.flush()
-            os.fsync(output.fileno())
+        with urllib.request.urlopen(request, timeout=90) as response:
+            resumed = bool(existing and getattr(response, "status", 200) == 206)
+            downloaded = existing if resumed else 0
+            total = downloaded + int(response.headers.get("Content-Length") or 0)
+            mode = "ab" if resumed else "wb"
+            last_reported = downloaded
+            with partial.open(mode) as output:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+                    downloaded += len(chunk)
+                    if progress and (downloaded - last_reported >= 16 * 1024 * 1024 or (total and downloaded >= total)):
+                        progress(downloaded, total or MODEL_SIZE_HINT)
+                        last_reported = downloaded
+                output.flush()
+                os.fsync(output.fileno())
         if downloaded < 1_000_000_000:
-            raise LocalTranslationError("İndirilen model dosyası beklenenden küçük; bozuk indirme silindi.")
+            raise LocalTranslationError("İndirilen model dosyası beklenenden küçük; indirme tamamlanmadı.")
         digest = hashlib.sha256()
         with partial.open("rb") as source:
             for chunk in iter(lambda: source.read(8 * 1024 * 1024), b""):
@@ -89,12 +93,14 @@ def install_english_turkish_model(progress=None) -> None:
         if digest.hexdigest().lower() != MODEL_SHA256:
             raise LocalTranslationError("Model SHA-256 doğrulamasından geçmedi. Güvenlik için dosya kullanılmadı.")
         os.replace(partial, MODEL_PATH)
+        if progress:
+            progress(downloaded, downloaded)
     except LocalTranslationError:
         partial.unlink(missing_ok=True)
         raise
     except Exception as exc:
-        partial.unlink(missing_ok=True)
-        raise LocalTranslationError(f"Yerel model indirilemedi: {exc}") from exc
+        # Keep a partial file so the next attempt can resume with HTTP Range.
+        raise LocalTranslationError(f"Yerel model indirilemedi; indirme kaldığı yerden sürdürülebilir: {exc}") from exc
 
 
 def _cache_path() -> Path:
