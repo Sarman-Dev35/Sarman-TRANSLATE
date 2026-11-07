@@ -5,7 +5,7 @@ import threading
 from pathlib import Path
 
 import keyring
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QThread, Signal, Qt
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
     QTableWidgetItem, QHeaderView, QMessageBox, QFileDialog, QProgressBar
@@ -133,7 +133,7 @@ class TranslationStudio(QDialog):
             for col, value in enumerate(values):
                 cell = QTableWidgetItem(value)
                 if col in (0, 1, 2):
-                    cell.setFlags(cell.flags() & ~cell.flags().ItemIsEditable)
+                    cell.setFlags(cell.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.table.setItem(row, col, cell)
 
     def save(self):
