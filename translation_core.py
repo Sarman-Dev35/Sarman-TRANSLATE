@@ -13,6 +13,7 @@ SUPPORTED = {".json", ".csv", ".txt", ".ini"}
 SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "binaries", "bin", "cache", "caches", "logs", "crashdumps"}
 MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_FILES = 5000
+MAX_DIRECTORIES = 20000
 MAX_ENTRIES = 30000
 PLACEHOLDER_RE = re.compile(
     r"\{[^{}]+\}|\$\{[^{}]+\}|\$[A-Za-z_][A-Za-z0-9_]*|%(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[a-zA-Z%]|"
@@ -72,21 +73,31 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
     if not root.is_dir():
         raise ValueError("Oyun klasörü bulunamadı.")
     entries: list[TextEntry] = []
-    visited = 0
-    for file in root.rglob("*"):
-        if not file.is_file() or file.suffix.casefold() not in SUPPORTED:
-            continue
-        if any(part.casefold() in SKIP_DIRS for part in file.relative_to(root).parts[:-1]):
-            continue
-        visited += 1
-        if visited > MAX_FILES:
+    visited_files = 0
+    visited_dirs = 0
+    # Prune irrelevant directories during traversal instead of walking all game assets.
+    for current, dirs, filenames in os.walk(root, topdown=True, followlinks=False):
+        visited_dirs += 1
+        if visited_dirs > MAX_DIRECTORIES:
             break
-        try:
-            if file.stat().st_size > MAX_FILE_BYTES:
+        current_path = Path(current)
+        dirs[:] = sorted(
+            name for name in dirs
+            if name.casefold() not in SKIP_DIRS and not (current_path / name).is_symlink()
+        )
+        for filename in sorted(filenames):
+            file = current_path / filename
+            if file.is_symlink() or file.suffix.casefold() not in SUPPORTED:
                 continue
-            text = file.read_text(encoding="utf-8-sig")
-        except (OSError, UnicodeError):
-            continue
+            visited_files += 1
+            if visited_files > MAX_FILES:
+                break
+            try:
+                if file.stat().st_size > MAX_FILE_BYTES:
+                    continue
+                text = file.read_text(encoding="utf-8-sig")
+            except (OSError, UnicodeError):
+                continue
         suffix = file.suffix.casefold()
         found: list[TextEntry] = []
         try:
@@ -151,9 +162,11 @@ def scan_game_texts(game_dir: str | Path, include_txt: bool = True) -> list[Text
                     if item: found.append(item)
         except (ValueError, csv.Error, json.JSONDecodeError):
             continue
-        entries.extend(found)
-        if len(entries) >= MAX_ENTRIES:
-            entries = entries[:MAX_ENTRIES]
+            entries.extend(found)
+            if len(entries) >= MAX_ENTRIES:
+                entries = entries[:MAX_ENTRIES]
+                break
+        if visited_files > MAX_FILES or len(entries) >= MAX_ENTRIES:
             break
     # Stable de-duplication by exact source+locator.
     unique = {}
