@@ -284,11 +284,11 @@ def _detect_language_files(game_root: Path) -> tuple[str, ...]:
                     if code:
                         found.add(code)
             for filename in files:
+                if Path(filename).suffix.casefold() not in {".json", ".csv", ".txt", ".ini"}:
+                    continue
                 scanned += 1
                 if scanned > 5000:
                     return tuple(sorted(found))
-                if Path(filename).suffix.casefold() not in {".json", ".csv", ".txt", ".ini"}:
-                    continue
                 match = _LANGUAGE_FILE.search(Path(filename).stem.replace('_', '-'))
                 if match:
                     code = _LANGUAGE_CODES.get(match.group(1).casefold().replace("_", "-"))
