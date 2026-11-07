@@ -4,7 +4,6 @@ import json
 import hashlib
 from pathlib import Path
 
-import credential_store
 from PySide6.QtCore import QThread, Signal, Qt, QTimer
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTableWidget,
@@ -12,8 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from translation_core import TextEntry, scan_game_texts, load_workspace, save_workspace, build_translated_files, create_translation_patch, validate_translation
-from gemini_translator import translate_batch, GeminiTranslationError
-from quota_testing import quota_test_remaining
+from local_engine import translate_text, model_status, install_english_turkish_model, LocalTranslationError
 from engine_support import inspect_game_engine
 
 SERVICE = "Sarman.TRANSLATE.Gemini"
@@ -37,62 +35,44 @@ class TextScanWorker(QThread):
 class TranslateWorker(QThread):
     progress = Signal(int, int, str)
     row_done = Signal(int, str)
-    paused = Signal(str)
     failed = Signal(str)
     completed = Signal()
 
-    def __init__(self, entries, api_key, model, indices, simulate_quota=False):
+    def __init__(self, entries, indices):
         super().__init__()
         self.entries = entries
-        self.api_key = api_key
-        self.model = model
         self.indices = indices
-        self.simulate_quota = simulate_quota
 
     def run(self):
-        if self.simulate_quota:
-            self.paused.emit("TEST_QUOTA_SIMULATION")
-            return
         total = len(self.indices)
-        completed = 0
-        groups: dict[str, list[int]] = {}
-        memory: dict[str, str] = {}
-        for entry in self.entries:
-            if entry.translated.strip() and not validate_translation(entry.source, entry.translated):
-                memory.setdefault(entry.source, entry.translated)
+        groups = {}
         for index in self.indices:
             groups.setdefault(self.entries[index].source, []).append(index)
-        pending = []
+        done = 0
         for source, indices in groups.items():
-            if source in memory:
-                for index in indices:
-                    self.row_done.emit(index, memory[source])
-                completed += len(indices)
-                self.progress.emit(completed, total, source[:80])
-            else:
-                pending.append((source, indices))
-        batch_size = 5
-        for offset in range(0, len(pending), batch_size):
-            chunk = pending[offset:offset + batch_size]
-            payload = [(str(indices[0]), source) for source, indices in chunk]
             try:
-                translated = translate_batch(self.api_key, self.model, payload)
-                for source, indices in chunk:
-                    result = translated[str(indices[0])]
-                    memory[source] = result
-                    for index in indices:
-                        self.row_done.emit(index, result)
-                    completed += len(indices)
-                    self.progress.emit(completed, total, source[:80])
-            except GeminiTranslationError as exc:
-                if exc.quota:
-                    self.paused.emit(str(exc))
-                else:
-                    source, indices = chunk[0]
-                    first = self.entries[indices[0]]
-                    self.failed.emit(f"{first.file} · {first.locator}: {exc}")
+                result = translate_text(source)
+                for index in indices:
+                    self.row_done.emit(index, result)
+                    done += 1
+                self.progress.emit(done, total, source[:72])
+            except LocalTranslationError as exc:
+                entry = self.entries[indices[0]]
+                self.failed.emit(f"{entry.file} · {entry.locator}: {exc}")
                 return
         self.completed.emit()
+
+
+class ModelInstallWorker(QThread):
+    completed = Signal()
+    failed = Signal(str)
+
+    def run(self):
+        try:
+            install_english_turkish_model()
+            self.completed.emit()
+        except Exception as exc:
+            self.failed.emit(str(exc))
 
 
 class TranslationStudio(QDialog):
@@ -113,6 +93,7 @@ class TranslationStudio(QDialog):
         self.resize(1050, 700)
         self._build()
         self._load_existing()
+        self.refresh_model_status()
 
     @staticmethod
     def _safe_name(value):
@@ -144,11 +125,17 @@ class TranslationStudio(QDialog):
         self.translate_btn.clicked.connect(self.translate_pending)
         self.export_btn = QPushButton("Yama ZIP'i oluştur")
         self.export_btn.clicked.connect(self.export_patch)
-        self.save_btn = QPushButton("Çalışmayı kaydet")
+        self.model_btn = QPushButton("Yerel modeli kur")
+        self.model_btn.clicked.connect(self.install_model)
+        self.save_btn = QPushButton("Kaydet")
         self.save_btn.clicked.connect(self.save)
-        for button in (self.scan_btn, self.translate_btn, self.save_btn, self.export_btn):
+        for button in (self.scan_btn, self.translate_btn, self.model_btn, self.export_btn, self.save_btn):
             actions.addWidget(button)
         root.addLayout(actions)
+        self.model_status_label = QLabel("")
+        self.model_status_label.setStyleSheet("color:#b9a18d;padding:4px;")
+        root.addWidget(self.model_status_label)
+        self.refresh_model_status()
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(["DURUM", "DOSYA / KONUM", "KAYNAK METİN", "TÜRKÇE ÇEVİRİ"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -258,18 +245,35 @@ class TranslationStudio(QDialog):
             else:
                 QMessageBox.warning(self, "Kaydetme", str(exc))
 
+    def refresh_model_status(self):
+        info = model_status()
+        self.model_status_label.setText(info["message"] + "  ·  İlk kurulum internet gerektirir; sonrasında çevrimdışı çalışır.")
+        self.model_btn.setEnabled(not info["installed"])
+        self.translate_btn.setEnabled(info["installed"] and bool(self.entries))
+
+    def install_model(self):
+        if self.worker and self.worker.isRunning():
+            return
+        self.model_btn.setEnabled(False)
+        self.status.setText("Yerel İngilizce → Türkçe modeli indiriliyor…")
+        self.worker = ModelInstallWorker(self)
+        self.worker.completed.connect(self._model_installed)
+        self.worker.failed.connect(self._model_install_failed)
+        self.worker.start()
+
+    def _model_installed(self):
+        self.status.setText("Yerel model hazır. Artık internet olmadan çeviri yapabilirsin.")
+        self.refresh_model_status()
+
+    def _model_install_failed(self, message):
+        self.status.setText("Model kurulumu başarısız.")
+        self.model_btn.setEnabled(True)
+        QMessageBox.warning(self, "Yerel model", message)
+
     def translate_pending(self):
-        try:
-            api_key = credential_store.get_password(SERVICE, "user-api-key")
-            model = credential_store.get_password(SERVICE, "model")
-        except Exception as exc:
-            QMessageBox.warning(self, "Gemini API", f"Windows kimlik bilgisi kasası açılamadı: {exc}")
-            return
-        if not api_key:
-            QMessageBox.information(self, "Gemini API", "Önce Ayarlar > Gemini API bölümünden kendi API anahtarını kaydet.")
-            return
-        if not model:
-            QMessageBox.information(self, "Gemini API", "Önce Gemini API ayarlarında bağlantıyı test et ve kullanılabilir bir model seç.")
+        info = model_status()
+        if not info["installed"]:
+            QMessageBox.information(self, "Yerel model", "Önce 'Yerel modeli kur' düğmesiyle İngilizce → Türkçe modelini indir.")
             return
         indices = [i for i, entry in enumerate(self.entries) if entry.status != "translated" or not entry.translated]
         if not indices:
@@ -277,10 +281,9 @@ class TranslationStudio(QDialog):
             return
         self._set_busy(True)
         self.progress.setRange(0, len(indices))
-        self.worker = TranslateWorker(self.entries, api_key, model, indices, simulate_quota=quota_test_remaining() > 0)
+        self.worker = TranslateWorker(self.entries, indices)
         self.worker.progress.connect(self._translation_progress)
         self.worker.row_done.connect(self._translation_done)
-        self.worker.paused.connect(self._quota_paused)
         self.worker.failed.connect(self._translation_failed)
         self.worker.completed.connect(self._translation_completed)
         self.worker.start()
@@ -324,7 +327,7 @@ class TranslationStudio(QDialog):
         self._set_busy(False)
         self.autosave_timer.stop()
         self.save()
-        QMessageBox.warning(self, "Çeviri hatası", message)
+        QMessageBox.warning(self, "Yerel çeviri hatası", message)
 
     def _translation_completed(self):
         self._set_busy(False)
@@ -333,7 +336,7 @@ class TranslationStudio(QDialog):
         self.status.setText("Çeviri kuyruğu tamamlandı. Çevirileri gözden geçir.")
 
     def _set_busy(self, busy):
-        for button in (self.scan_btn, self.translate_btn, self.export_btn):
+        for button in (self.scan_btn, self.translate_btn, self.export_btn, self.model_btn):
             button.setEnabled(not busy)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers if busy else (QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.EditKeyPressed))
 
