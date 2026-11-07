@@ -11,9 +11,6 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    env:
-      SIGN_CERT_B64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
-      SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,9 +24,25 @@ jobs:
           pip install -r requirements.txt
       - name: Build executable
         run: pyinstaller --noconfirm --clean --windowed --name "Sarman TRANSLATE" --version-file version_info.txt --collect-all PySide6 --collect-all keyring main.py
-      - name: Sign Windows executable with Authenticode
-        if: ${{ env.SIGN_CERT_B64 != '' && env.SIGN_CERT_PASSWORD != '' }}
+      - name: Check whether signing secrets are configured
+        id: signing_config
         shell: pwsh
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if ($env:CERTIFICATE_BASE64 -and $env:CERTIFICATE_PASSWORD) {
+            "configured=true" >> $env:GITHUB_OUTPUT
+          }
+          else {
+            "configured=false" >> $env:GITHUB_OUTPUT
+          }
+      - name: Sign Windows executable with Authenticode
+        if: ${{ steps.signing_config.outputs.configured == 'true' }}
+        shell: pwsh
+        env:
+          SIGN_CERT_B64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           $certificatePath = Join-Path $env:RUNNER_TEMP "sarman-signing.pfx"
           try {
@@ -48,7 +61,7 @@ jobs:
             Remove-Item $certificatePath -Force -ErrorAction SilentlyContinue
           }
       - name: Explain unsigned build when no certificate is configured
-        if: ${{ env.SIGN_CERT_B64 == '' || env.SIGN_CERT_PASSWORD == '' }}
+        if: ${{ steps.signing_config.outputs.configured != 'true' }}
         run: echo "::warning::No Authenticode certificate configured. The executable will be unsigned and Windows SmartScreen may show an unknown publisher warning."
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
