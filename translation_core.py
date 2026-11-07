@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -144,8 +145,12 @@ def validate_translation(source: str, translated: str) -> list[str]:
 
 
 def save_workspace(path: str | Path, game_dir: str | Path, entries: Iterable[TextEntry]) -> None:
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
     payload = {"version": 1, "game_dir": str(Path(game_dir).resolve()), "entries": [e.to_dict() for e in entries]}
-    Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(temporary, destination)
 
 
 def load_workspace(path: str | Path) -> dict:
