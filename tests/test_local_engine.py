@@ -13,6 +13,17 @@ class LocalEngineTests(unittest.TestCase):
             with patch.dict("sys.modules", {"argostranslate": None, "argostranslate.translate": None}):
                 self.assertEqual(local_engine.translate_text("Start Game"), "Oyuna Başla")
 
+    def test_model_added_line_break_is_normalized_for_single_line_source(self):
+        class FakeModel:
+            def __call__(self, prompt, **kwargs):
+                return {"choices": [{"text": "Kapıyı\n aç"}]}
+
+        with tempfile.TemporaryDirectory() as tmp, patch.object(local_engine, "APP_DATA", Path(tmp)):
+            with patch.object(local_engine, "_get_model", return_value=FakeModel()), patch.object(
+                local_engine, "_cache_get", return_value=None
+            ), patch.object(local_engine, "_cache_put"):
+                self.assertEqual(local_engine.translate_text("Open the door"), "Kapıyı aç")
+
     def test_glossary_and_placeholders_are_restored(self):
         class FakeModel:
             def __call__(self, prompt, **kwargs):
