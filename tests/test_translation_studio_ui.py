@@ -43,5 +43,38 @@ class TranslationStudioUiTests(unittest.TestCase):
                     self.assertIn("#f06a3d", dialog.styleSheet())
 
 
+    def test_dialog_refuses_to_close_while_worker_is_running(self):
+        import tempfile
+        from unittest.mock import patch
+        from PySide6.QtGui import QCloseEvent
+        from game_discovery import Game
+
+        status = {
+            "installed": False,
+            "present": False,
+            "partial_present": False,
+            "message": "Model kurulmadı",
+            "model_path": "",
+        }
+
+        class RunningWorker:
+            def isRunning(self):
+                return True
+
+        with tempfile.TemporaryDirectory() as game_dir, tempfile.TemporaryDirectory() as app_data:
+            game = Game(name="Close Guard Test", platform="Test", path=game_dir)
+            with patch.object(translation_studio, "APP_DATA", Path(app_data)):
+                with patch.object(translation_studio, "model_status", return_value=status):
+                    dialog = translation_studio.TranslationStudio(game)
+            dialog.worker = RunningWorker()
+            event = QCloseEvent()
+            with patch.object(translation_studio.QMessageBox, "information"):
+                dialog.closeEvent(event)
+            self.assertFalse(event.isAccepted())
+            dialog.worker = None
+            dialog.autosave_timer.stop()
+            dialog.close()
+
+
 if __name__ == "__main__":
     unittest.main()
