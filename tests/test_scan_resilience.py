@@ -74,10 +74,10 @@ class ScanResilienceTests(unittest.TestCase):
                 studio.close()
 
     def test_translation_studio_can_rescan_same_game_twice(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as app_data:
             root = Path(tmp)
             (root / "strings.json").write_text('{"title":"New Game"}', encoding="utf-8")
-            with patch("translation_studio.APP_DATA", Path(tmp) / "appdata"):
+            with patch("translation_studio.APP_DATA", Path(app_data)):
                 studio = TranslationStudio(Game("Rescan Test", "Test", str(root)))
                 loop = QEventLoop()
                 receiver = _ScanReceiver(studio, loop)
