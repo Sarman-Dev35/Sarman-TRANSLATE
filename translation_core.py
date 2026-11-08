@@ -279,8 +279,12 @@ def validate_translation(source: str, translated: str) -> list[str]:
         issues.append("Çeviri boş.")
     if placeholder_signature(source) != placeholder_signature(translated):
         issues.append("Değişken veya biçim kodları kaynak metinle eşleşmiyor.")
-    if translated.count("\n") != source.count("\n"):
-        issues.append("Satır sonu sayısı değişti.")
+    # Compare the actual separator sequence, not only the number of LF
+    # characters. CRLF, LF and legacy CR are distinct file/game formats.
+    source_newlines = re.findall(r"\r\n|\r|\n", source)
+    translated_newlines = re.findall(r"\r\n|\r|\n", translated)
+    if translated_newlines != source_newlines:
+        issues.append("Satır sonu biçimi veya sayısı değişti.")
     return issues
 
 
