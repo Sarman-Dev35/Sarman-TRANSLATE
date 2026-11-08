@@ -34,8 +34,8 @@ class MainWindowScanLifecycleTests(unittest.TestCase):
                 self.app.processEvents()
 
     def test_stale_finish_cannot_clear_newer_library_scan(self):
-        with patch("main.QTimer.singleShot"), patch("main.discover_games", return_value=[]):
-            window = MainWindow()
+        with patch("main.discover_games", return_value=[]):
+            window = MainWindow(auto_scan=False)
             try:
                 class CurrentWorker:
                     def isRunning(self):
