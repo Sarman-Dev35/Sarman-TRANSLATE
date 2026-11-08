@@ -200,7 +200,7 @@ class TranslationStudio(QDialog):
         return "".join(c if c.isalnum() or c in "-_" else "_" for c in value)[:80] or "game"
 
     def _build(self):
-        # The studio uses the fixed Sarman palette. Avoid a runtime dependency on\n        # per-game palette helpers so older one-folder bundles cannot fail startup.\n        accent, secondary = "#f06a3d", "#a92f45"
+        # The studio uses the fixed Sarman palette. Keep these values local\n        # to the stylesheet construction so bundled builds cannot miss them.\n        accent, secondary = "#f06a3d", "#a92f45"
         root = QVBoxLayout(self)
         root.setContentsMargins(22, 20, 22, 18)
         root.setSpacing(13)
