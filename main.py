@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 from patch_manager import (PatchError, inspect_patch, install_patch, uninstall_latest, uninstall_all, installed_patch_languages, incomplete_patch_installs, rollback_incomplete_patches)
 from translation_studio import TranslationStudio
 from translation_core import remove_incomplete_patch
+from worker_lifecycle import ThreadFinishRelay, thread_is_running
 
 APP_NAME = "Sarman TRANSLATE"
 ACCENT = "#e58a43"
@@ -72,18 +73,19 @@ def install_exception_logging():
 
 
 class ScanWorker(QThread):
-    completed = Signal(list)
-    failed = Signal(str)
+    completed = Signal(int, list)
+    failed = Signal(int, str)
 
-    def __init__(self, extra_roots=None, parent=None):
+    def __init__(self, generation: int, extra_roots=None, parent=None):
         super().__init__(parent)
+        self.generation = int(generation)
         self.extra_roots = extra_roots or []
 
     def run(self):
         try:
-            self.completed.emit(discover_games(self.extra_roots))
+            self.completed.emit(self.generation, discover_games(self.extra_roots))
         except Exception as exc:
-            self.failed.emit(str(exc))
+            self.failed.emit(self.generation, str(exc))
 
 
 class StatCard(QFrame):
@@ -355,7 +357,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(theme_stylesheet(accent, secondary))
 
     def closeEvent(self, event):
-        if self.worker and self.worker.isRunning():
+        if thread_is_running(self.worker):
             QMessageBox.information(self, APP_NAME, "Oyun taraması tamamlanana kadar uygulama kapatılamaz.")
             event.ignore()
             return
@@ -373,35 +375,31 @@ class MainWindow(QMainWindow):
         self.nav_patch.style().polish(self.nav_patch)
 
     def start_scan(self):
-        if self.worker and self.worker.isRunning():
+        if thread_is_running(self.worker):
             return
         self._scan_generation += 1
         generation = self._scan_generation
         self.scan_btn.setEnabled(False)
         self.scan_btn.setText("Taranıyor…")
         self.library_status.setText("Oyun kütüphaneleri taranıyor…")
-        worker = ScanWorker(parent=self)
-        worker.generation = generation
+        worker = ScanWorker(generation=generation, parent=self)
         self.worker = worker
         worker.completed.connect(self.scan_finished)
         worker.failed.connect(self.scan_failed)
-        worker.finished.connect(self._scan_thread_finished)
+        relay = ThreadFinishRelay(self._scan_thread_finished, generation, self)
+        worker.finished.connect(relay.dispatch, Qt.ConnectionType.QueuedConnection)
         worker.finished.connect(worker.deleteLater)
         worker.start()
 
-    def _scan_thread_finished(self):
-        # QThread.finished may be followed by deleteLater before a queued slot
-        # safely inspects sender(). Never dereference the finishing QThread here:
-        # clear the single active-worker reference from this GUI-thread slot.
+    def _scan_thread_finished(self, generation):
+        # A delayed finish from an older worker must never clear a newer scan.
+        if generation != self._scan_generation:
+            return
         self.worker = None
         self.scan_btn.setEnabled(True)
 
-    def scan_finished(self, games):
-        worker = self.sender()
-        if worker is not None and (
-            worker is not self.worker
-            or getattr(worker, "generation", None) != self._scan_generation
-        ):
+    def scan_finished(self, generation, games):
+        if generation != self._scan_generation:
             return
         try:
             self.studio_btn.setEnabled(False)
@@ -422,12 +420,8 @@ class MainWindow(QMainWindow):
             self.library_status.setText("Tarama sonuçları arayüze aktarılamadı.")
             QMessageBox.warning(self, APP_NAME, f"Oyunlar bulundu ancak liste güncellenemedi:\n{exc}")
 
-    def scan_failed(self, message):
-        worker = self.sender()
-        if worker is not None and (
-            worker is not self.worker
-            or getattr(worker, "generation", None) != self._scan_generation
-        ):
+    def scan_failed(self, generation, message):
+        if generation != self._scan_generation:
             return
         self.library_status.setText("Tarama sırasında hata oluştu")
         QMessageBox.warning(self, APP_NAME, message)
