@@ -361,7 +361,7 @@ def translate_text(text: str, context: str = "", game_name: str = "") -> str:
         # Convert only those model-added breaks to spaces; genuine source
         # newlines are handled above and reassembled with their exact separators.
         if not re.search(r"\r\n|\r|\n", original_text):
-            result = re.sub(r"\r\n|\r|\n", " ", result).strip()
+            result = re.sub(r"\s*(?:\r\n|\r|\n)\s*", " ", result).strip()
         result = re.sub(r"^(Turkish translation|Translation|Türkçe çeviri|Çeviri)\s*:\s*", "", result, flags=re.IGNORECASE)
         for marker, replacement in tokens:
             if result.count(marker) != 1:
