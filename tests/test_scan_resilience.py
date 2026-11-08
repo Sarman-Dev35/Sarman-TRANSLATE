@@ -22,8 +22,8 @@ class _ScanReceiver(QObject):
     @Slot(int, list)
     def completed(self, generation, entries):
         self.results.append(len(entries))
-        if len(self.results) == 1:
-            QTimer.singleShot(60, self.studio.scan)
+        if len(self.results) < 20:
+            QTimer.singleShot(20, self.studio.scan)
         else:
             QTimer.singleShot(60, self.loop.quit)
 
@@ -73,7 +73,7 @@ class ScanResilienceTests(unittest.TestCase):
                 studio._scan_busy = False
                 studio.close()
 
-    def test_translation_studio_can_rescan_same_game_twice(self):
+    def test_translation_studio_can_rescan_same_game_twenty_times(self):
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as app_data:
             root = Path(tmp)
             (root / "strings.json").write_text('{"title":"New Game"}', encoding="utf-8")
@@ -89,9 +89,9 @@ class ScanResilienceTests(unittest.TestCase):
 
                 with patch.object(TextScanWorker, "start", observe_start):
                     studio.scan()
-                    QTimer.singleShot(10000, loop.quit)
+                    QTimer.singleShot(30000, loop.quit)
                     loop.exec()
-                self.assertEqual(receiver.results, [1, 1])
+                self.assertEqual(receiver.results, [1] * 20)
                 self.assertIsNone(studio.scan_worker)
                 studio.close()
 

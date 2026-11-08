@@ -356,6 +356,12 @@ def translate_text(text: str, context: str = "", game_name: str = "") -> str:
                 echo=False,
             )
         result = response["choices"][0]["text"].strip()
+        # A single-line source must remain single-line. Small local models
+        # sometimes insert visual wrapping even when the source has no breaks.
+        # Convert only those model-added breaks to spaces; genuine source
+        # newlines are handled above and reassembled with their exact separators.
+        if not re.search(r"\r\n|\r|\n", original_text):
+            result = re.sub(r"[ \t]*(?:\r\n|\r|\n)[ \t]*", " ", result).strip()
         result = re.sub(r"^(Turkish translation|Translation|Türkçe çeviri|Çeviri)\s*:\s*", "", result, flags=re.IGNORECASE)
         for marker, replacement in tokens:
             if result.count(marker) != 1:

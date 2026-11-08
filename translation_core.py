@@ -183,7 +183,7 @@ def scan_game_texts(
             try:
                 if file.stat().st_size > MAX_FILE_BYTES:
                     continue
-                text = file.read_text(encoding="utf-8-sig")
+                text = file.read_bytes().decode("utf-8-sig")
             except (OSError, UnicodeError):
                 continue
             suffix = file.suffix.casefold()

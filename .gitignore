@@ -8,3 +8,24 @@ dist/
 .idea/
 .vscode/
 .DS_Store
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.secrets/
+secrets/
+*.pfx
+*.p12
+*.pem
+*.key
+
+# Downloaded models, partial downloads and local user data
+models/
+*.gguf
+*.part
+*.sqlite3
+*.db
+logs/
+*.log
+backups/

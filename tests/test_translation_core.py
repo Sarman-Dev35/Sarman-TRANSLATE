@@ -71,6 +71,21 @@ class TranslationCoreTests(unittest.TestCase):
             self.assertEqual({item.source for item in english}, {"Start Game", "English folder text", "Neutral text"})
             self.assertEqual({item.source for item in german}, {"Spiel starten", "German folder text", "Neutral text"})
 
+    def test_csv_multiline_fields_keep_original_crlf_during_scan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "locale.csv"
+            source.write_bytes(
+                b'key,en,fr\r\nintro,"First line\r\nSecond line",Intro\r\n'
+            )
+            entries = scan_game_texts(root)
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0].source, "First line\r\nSecond line")
+            self.assertEqual(
+                validate_translation(entries[0].source, "Birinci satır\r\nİkinci satır"),
+                [],
+            )
+
     def test_csv_uses_selected_language_column(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
