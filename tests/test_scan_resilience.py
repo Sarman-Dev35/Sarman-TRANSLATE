@@ -58,40 +58,42 @@ class ScanResilienceTests(unittest.TestCase):
 
     def test_stale_scan_finish_cannot_clear_newer_worker(self):
         with tempfile.TemporaryDirectory() as tmp:
-            studio = TranslationStudio(Game("Stale Finish Test", "Test", tmp))
-            current_worker = object()
-            studio._scan_generation = 2
-            studio.scan_worker = current_worker
-            studio._scan_busy = True
+            with patch("translation_studio.APP_DATA", Path(tmp) / "appdata"):
+                studio = TranslationStudio(Game("Stale Finish Test", "Test", tmp))
+                current_worker = object()
+                studio._scan_generation = 2
+                studio.scan_worker = current_worker
+                studio._scan_busy = True
 
-            studio._scan_thread_finished(1)
+                studio._scan_thread_finished(1)
 
-            self.assertIs(studio.scan_worker, current_worker)
-            self.assertTrue(studio._scan_busy)
-            studio.scan_worker = None
-            studio._scan_busy = False
-            studio.close()
+                self.assertIs(studio.scan_worker, current_worker)
+                self.assertTrue(studio._scan_busy)
+                studio.scan_worker = None
+                studio._scan_busy = False
+                studio.close()
 
     def test_translation_studio_can_rescan_same_game_twice(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "strings.json").write_text('{"title":"New Game"}', encoding="utf-8")
-            studio = TranslationStudio(Game("Rescan Test", "Test", str(root)))
-            loop = QEventLoop()
-            receiver = _ScanReceiver(studio, loop)
-            original_start = TextScanWorker.start
+            with patch("translation_studio.APP_DATA", Path(tmp) / "appdata"):
+                studio = TranslationStudio(Game("Rescan Test", "Test", str(root)))
+                loop = QEventLoop()
+                receiver = _ScanReceiver(studio, loop)
+                original_start = TextScanWorker.start
 
-            def observe_start(worker, *args, **kwargs):
-                worker.completed.connect(receiver.completed)
-                return original_start(worker, *args, **kwargs)
+                def observe_start(worker, *args, **kwargs):
+                    worker.completed.connect(receiver.completed)
+                    return original_start(worker, *args, **kwargs)
 
-            with patch.object(TextScanWorker, "start", observe_start):
-                studio.scan()
-                QTimer.singleShot(10000, loop.quit)
-                loop.exec()
-            self.assertEqual(receiver.results, [1, 1])
-            self.assertIsNone(studio.scan_worker)
-            studio.close()
+                with patch.object(TextScanWorker, "start", observe_start):
+                    studio.scan()
+                    QTimer.singleShot(10000, loop.quit)
+                    loop.exec()
+                self.assertEqual(receiver.results, [1, 1])
+                self.assertIsNone(studio.scan_worker)
+                studio.close()
 
 
 if __name__ == "__main__":
