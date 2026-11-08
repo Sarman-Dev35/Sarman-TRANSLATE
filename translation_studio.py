@@ -195,6 +195,30 @@ class TranslationStudio(QDialog):
         self._load_existing()
         self.refresh_model_status()
 
+    def closeEvent(self, event):
+        """Keep the dialog alive while child QThreads still use its state."""
+        active_workers = []
+        for worker in (self.scan_worker, self.worker):
+            if worker is None:
+                continue
+            try:
+                if worker.isRunning():
+                    active_workers.append(worker)
+            except RuntimeError:
+                # The C++ QThread object has already completed deferred deletion.
+                continue
+        if active_workers:
+            QMessageBox.information(
+                self,
+                "İşlem devam ediyor",
+                "Tarama, çeviri veya model işlemi tamamlanmadan Çeviri Atölyesi kapatılamaz. "
+                "İşlem bittiğinde pencereyi tekrar kapatabilirsin.",
+            )
+            event.ignore()
+            return
+        self.autosave_timer.stop()
+        event.accept()
+
     @staticmethod
     def _safe_name(value):
         return "".join(c if c.isalnum() or c in "-_" else "_" for c in value)[:80] or "game"
