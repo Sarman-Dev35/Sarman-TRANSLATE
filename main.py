@@ -103,7 +103,7 @@ class StatCard(QFrame):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, auto_scan=True):
         super().__init__()
         self.setWindowTitle(APP_NAME)
         icon_file = asset_path("sarman-translate.ico")
@@ -124,7 +124,8 @@ class MainWindow(QMainWindow):
         self.art_service.cover_ready.connect(self._game_art_ready)
         self.apply_style()
         # Start discovery after the event loop begins so the window remains responsive.
-        QTimer.singleShot(150, self.start_scan)
+        if auto_scan:
+            QTimer.singleShot(150, self.start_scan)
 
     def build_ui(self):
         central = QWidget()
