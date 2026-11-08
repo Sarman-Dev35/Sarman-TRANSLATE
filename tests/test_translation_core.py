@@ -37,6 +37,11 @@ class TranslationCoreTests(unittest.TestCase):
         self.assertEqual(validate_translation("Hello {player_name}", "Merhaba {player_name}"), [])
         self.assertTrue(validate_translation("Hello %s", "Merhaba"))
 
+    def test_translation_validation_preserves_exact_newline_style_and_order(self):
+        self.assertEqual(validate_translation("First\r\nSecond\nThird\rFourth", "Bir\r\nİki\nÜç\rDört"), [])
+        self.assertIn("Satır sonu biçimi veya sayısı değişti.", validate_translation("First\r\nSecond", "Bir\nİki"))
+        self.assertIn("Satır sonu biçimi veya sayısı değişti.", validate_translation("First\rSecond\nThird", "Bir\nİki\rÜç"))
+
     def test_deeply_nested_json_does_not_abort_other_file_scans(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
