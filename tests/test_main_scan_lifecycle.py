@@ -1,5 +1,4 @@
 import os
-import tempfile
 import time
 import unittest
 from unittest.mock import patch
@@ -17,8 +16,8 @@ class MainWindowScanLifecycleTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def test_repeated_library_scans_release_each_worker(self):
-        with patch("main.QTimer.singleShot"), patch("main.discover_games", return_value=[]):
-            window = MainWindow()
+        with patch("main.discover_games", return_value=[]):
+            window = MainWindow(auto_scan=False)
             try:
                 for _ in range(20):
                     window.start_scan()
