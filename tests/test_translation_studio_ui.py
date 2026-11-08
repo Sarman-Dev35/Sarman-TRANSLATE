@@ -43,6 +43,39 @@ class TranslationStudioUiTests(unittest.TestCase):
                     self.assertIn("#f06a3d", dialog.styleSheet())
 
 
+    def test_dialog_close_handles_deleted_worker_and_saves_workspace(self):
+        from unittest.mock import patch
+        from PySide6.QtGui import QCloseEvent
+
+        status = {
+            "installed": False,
+            "present": False,
+            "partial_present": False,
+            "message": "Model kurulmadı",
+            "model_path": "",
+        }
+
+        class DeletedWorker:
+            def isRunning(self):
+                raise RuntimeError("wrapped C++ QThread has been deleted")
+
+        with tempfile.TemporaryDirectory() as game_dir, tempfile.TemporaryDirectory() as app_data:
+            game = Game(name="Deleted Worker Test", platform="Test", path=game_dir)
+            with patch.object(translation_studio, "APP_DATA", Path(app_data)):
+                with patch.object(translation_studio, "model_status", return_value=status):
+                    dialog = translation_studio.TranslationStudio(game)
+            dialog.worker = DeletedWorker()
+            dialog.autosave_timer.start()
+            event = QCloseEvent()
+            with patch.object(dialog, "save") as save:
+                dialog.closeEvent(event)
+            self.assertTrue(event.isAccepted())
+            self.assertFalse(dialog.autosave_timer.isActive())
+            save.assert_called_once_with(silent=True)
+            dialog.worker = None
+            dialog.close()
+
+
     def test_dialog_refuses_to_close_while_worker_is_running(self):
         import tempfile
         from unittest.mock import patch
