@@ -591,7 +591,8 @@ class MainWindow(QMainWindow):
         try:
             dialog = TranslationStudio(game, self, source_language=source_language)
             dialog.exec()
-        except (OSError, RuntimeError, ValueError) as exc:
+        except Exception as exc:
+            logging.getLogger("sarman_translate").exception("Çeviri Atölyesi açılamadı")
             QMessageBox.warning(self, APP_NAME, f"Çeviri Atölyesi açılamadı:\n{exc}")
 
     def remove_partial_patch_file(self):
