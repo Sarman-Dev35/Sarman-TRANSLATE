@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 
 from translation_core import TextEntry, scan_game_texts, load_workspace, save_workspace, build_translated_files, create_translation_patch, validate_translation
 from local_engine import APP_DATA, translate_text, model_status, install_english_turkish_model, uninstall_english_turkish_model, LocalTranslationError, glossary_items, set_glossary_term, delete_glossary_term
+from worker_lifecycle import ThreadFinishRelay, thread_is_running
 
 
 class GlossaryDialog(QDialog):
@@ -97,19 +98,21 @@ class GlossaryDialog(QDialog):
 
 
 class TextScanWorker(QThread):
-    completed = Signal(list)
-    failed = Signal(str)
+    completed = Signal(int, list)
+    failed = Signal(int, str)
 
-    def __init__(self, game_dir, source_language="EN", parent=None):
+    def __init__(self, game_dir, source_language="EN", generation=0, parent=None):
         super().__init__(parent)
         self.game_dir = str(game_dir)
         self.source_language = str(source_language or "EN").upper()
+        self.generation = int(generation)
 
     def run(self):
         try:
-            self.completed.emit(scan_game_texts(self.game_dir, source_language=self.source_language))
+            found = scan_game_texts(self.game_dir, source_language=self.source_language)
+            self.completed.emit(self.generation, found)
         except Exception as exc:
-            self.failed.emit(str(exc))
+            self.failed.emit(self.generation, str(exc))
 
 
 class TranslateWorker(QThread):
@@ -179,6 +182,7 @@ class TranslationStudio(QDialog):
         language_suffix = "" if self.source_language == "EN" else "-" + self._safe_name(self.source_language).lower()
         self.workspace_path = APP_DATA / "workspaces" / (self._safe_name(game.name) + "-" + game_identity + language_suffix + ".json")
         self._operation_busy = False
+        self._operation_generation = 0
         self.worker = None
         self.scan_worker = None
         self._scan_generation = 0
@@ -290,38 +294,37 @@ class TranslationStudio(QDialog):
                 self.status.setText("Önceki çalışma okunamadı; yeni tarama yapabilirsin.")
 
     def scan(self):
-        if self.scan_worker and self.scan_worker.isRunning():
+        if thread_is_running(self.scan_worker):
             return
-        if self.worker and self.worker.isRunning():
+        if thread_is_running(self.worker):
             QMessageBox.information(self, "İşlem sürüyor", "Model indirme veya çeviri işlemi bitmeden yeni tarama başlatılamaz.")
             return
         self._set_scan_busy(True)
         self.status.setText("Oyun metinleri arka planda taranıyor…")
         self._scan_generation += 1
         generation = self._scan_generation
-        worker = TextScanWorker(self.game.path, self.source_language, self)
+        worker = TextScanWorker(
+            self.game.path, self.source_language, generation=generation, parent=self
+        )
         self.scan_worker = worker
-        worker.generation = generation
         worker.completed.connect(self.scan_completed)
         worker.failed.connect(self.scan_failed)
-        worker.finished.connect(self._scan_thread_finished)
+        relay = ThreadFinishRelay(self._scan_thread_finished, generation, self)
+        worker.finished.connect(relay.dispatch, Qt.ConnectionType.QueuedConnection)
         worker.finished.connect(worker.deleteLater)
         worker.start()
 
-    def _scan_thread_finished(self):
-        # Do not inspect sender(): the QThread is scheduled for deleteLater
-        # on this same finished signal and its Python wrapper may already be invalid.
+    def _scan_thread_finished(self, generation):
+        # Ignore stale finish notifications from a previous scan generation.
+        if generation != self._scan_generation:
+            return
         self.scan_worker = None
         self._scan_busy = False
-        self.scan_btn.setEnabled(not self._operation_busy and not (self.worker and self.worker.isRunning()))
+        self.scan_btn.setEnabled(not self._operation_busy and not thread_is_running(self.worker))
         self.refresh_model_status()
 
-    def scan_completed(self, found):
-        worker = self.sender()
-        if worker is not None and (
-            worker is not self.scan_worker
-            or getattr(worker, "generation", None) != self._scan_generation
-        ):
+    def scan_completed(self, generation, found):
+        if generation != self._scan_generation:
             return
         try:
             existing = {entry.entry_id: entry for entry in self.entries}
@@ -343,12 +346,8 @@ class TranslationStudio(QDialog):
             self._set_scan_busy(False)
             self.refresh_model_status()
 
-    def scan_failed(self, message):
-        worker = self.sender()
-        if worker is not None and (
-            worker is not self.scan_worker
-            or getattr(worker, "generation", None) != self._scan_generation
-        ):
+    def scan_failed(self, generation, message):
+        if generation != self._scan_generation:
             return
         self._set_scan_busy(False)
         self.status.setText("Metin taraması başarısız.")
@@ -356,7 +355,7 @@ class TranslationStudio(QDialog):
 
     def _set_scan_busy(self, busy):
         self._scan_busy = busy
-        self.scan_btn.setEnabled(not busy and not (self.scan_worker and self.scan_worker.isRunning()))
+        self.scan_btn.setEnabled(not busy and not thread_is_running(self.scan_worker))
         self.export_btn.setEnabled(not busy and bool(self.entries))
         self.table.setEditTriggers(
             QTableWidget.NoEditTriggers if busy
@@ -422,8 +421,8 @@ class TranslationStudio(QDialog):
             self.model_btn.setText("↓  AI modelini indir · 1,13 GB")
         busy = (
             self._operation_busy or self._scan_busy
-            or bool(self.worker and self.worker.isRunning())
-            or bool(self.scan_worker and self.scan_worker.isRunning())
+            or thread_is_running(self.worker)
+            or thread_is_running(self.scan_worker)
         )
         self.model_btn.setEnabled(not info["installed"] and not busy)
         has_model_files = bool(info.get("present") or info.get("partial_present"))
@@ -434,7 +433,7 @@ class TranslationStudio(QDialog):
         )
 
     def install_model(self):
-        if self.worker and self.worker.isRunning():
+        if thread_is_running(self.worker):
             return
         self.model_btn.setEnabled(False)
         self.remove_model_btn.setEnabled(False)
@@ -443,10 +442,14 @@ class TranslationStudio(QDialog):
         self.progress.setFormat("Model indiriliyor · %p%")
         self.status.setText("Hy-MT2 İngilizce → Türkçe çeviri modeli indiriliyor…")
         self.model_status_label.setText("Bağlantı kuruluyor… · yaklaşık 1,13 GB")
+        self._operation_busy = True
         self.worker = ModelInstallWorker(self)
+        self._operation_generation += 1
+        operation_generation = self._operation_generation
+        relay = ThreadFinishRelay(self._worker_thread_finished, operation_generation, self)
         self.worker.completed.connect(self._model_installed)
         self.worker.failed.connect(self._model_install_failed)
-        self.worker.finished.connect(self._worker_thread_finished)
+        self.worker.finished.connect(relay.dispatch, Qt.ConnectionType.QueuedConnection)
         self.worker.finished.connect(self.worker.deleteLater)
         self.worker.progress.connect(self._model_download_progress)
         self.worker.start()
@@ -473,7 +476,7 @@ class TranslationStudio(QDialog):
         self.refresh_model_status()
 
     def remove_model(self):
-        if self.worker and self.worker.isRunning():
+        if thread_is_running(self.worker):
             QMessageBox.information(self, "Çeviri sürüyor", "Model kullanımdayken kaldırılamaz. Çevirinin tamamlanmasını bekle.")
             return
         info = model_status()
@@ -502,10 +505,10 @@ class TranslationStudio(QDialog):
         QMessageBox.warning(self, "Çeviri modeli", message)
 
     def translate_pending(self):
-        if self.scan_worker and self.scan_worker.isRunning():
+        if thread_is_running(self.scan_worker):
             QMessageBox.information(self, "Tarama sürüyor", "Oyun metin taraması tamamlanana kadar çeviri başlatılamaz.")
             return
-        if self.worker and self.worker.isRunning():
+        if thread_is_running(self.worker):
             return
         if self.source_language != "EN":
             QMessageBox.information(
@@ -525,11 +528,14 @@ class TranslationStudio(QDialog):
         self._set_busy(True)
         self.progress.setRange(0, len(indices))
         self.worker = TranslateWorker(self.entries, indices, self.game.name, self)
+        self._operation_generation += 1
+        operation_generation = self._operation_generation
+        relay = ThreadFinishRelay(self._worker_thread_finished, operation_generation, self)
         self.worker.progress.connect(self._translation_progress)
         self.worker.row_done.connect(self._translation_done)
         self.worker.failed.connect(self._translation_failed)
         self.worker.completed.connect(self._translation_completed)
-        self.worker.finished.connect(self._worker_thread_finished)
+        self.worker.finished.connect(relay.dispatch, Qt.ConnectionType.QueuedConnection)
         self.worker.finished.connect(self.worker.deleteLater)
         self.worker.start()
 
@@ -564,16 +570,17 @@ class TranslationStudio(QDialog):
         self.save()
         self.status.setText("Yapay zekâ çevirisi tamamlandı. Terimleri ve kelime oyunlarını gözden geçir.")
 
-    def _worker_thread_finished(self):
-        # The window allows only one model/translation worker at a time.
-        # Avoid dereferencing sender() after QThread.finished/deleteLater.
+    def _worker_thread_finished(self, generation):
+        # Ignore a late finish event from an earlier model/translation operation.
+        if generation != self._operation_generation:
+            return
         self.worker = None
         self._operation_busy = False
         self.refresh_model_status()
 
     def _set_busy(self, busy):
         self._operation_busy = busy
-        self.scan_btn.setEnabled(not busy and not (self.scan_worker and self.scan_worker.isRunning()))
+        self.scan_btn.setEnabled(not busy and not thread_is_running(self.scan_worker))
         self.export_btn.setEnabled(not busy and bool(self.entries))
         self.glossary_btn.setEnabled(not busy)
         self.table.setEditTriggers(
@@ -589,7 +596,7 @@ class TranslationStudio(QDialog):
             if worker is None:
                 continue
             try:
-                if worker.isRunning():
+                if thread_is_running(worker):
                     active_workers.append(worker)
             except RuntimeError:
                 # The wrapped C++ QThread may already have been deleted by Qt.
@@ -612,10 +619,10 @@ class TranslationStudio(QDialog):
         if not any(e.translated.strip() for e in self.entries):
             QMessageBox.information(self, "Yama", "Önce en az bir metni çevir.")
             return
-        if self.scan_worker and self.scan_worker.isRunning():
+        if thread_is_running(self.scan_worker):
             QMessageBox.information(self, "Yama", "Metin taraması bitmeden yama oluşturulamaz.")
             return
-        if self.worker and self.worker.isRunning():
+        if thread_is_running(self.worker):
             QMessageBox.information(self, "Yama", "Çeviri işlemi bitmeden yama oluşturulamaz.")
             return
         filename, _ = QFileDialog.getSaveFileName(self, "Yama paketini kaydet", f"{self._safe_name(self.game.name)}-tr.zip", "ZIP (*.zip)")

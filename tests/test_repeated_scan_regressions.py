@@ -51,6 +51,23 @@ class RepeatedScanRegressionTests(unittest.TestCase):
             }
             self.assertNotIn("sender", names, f"{filename}:{method_name} must not use sender()")
 
+    def test_scan_result_slots_use_generation_tokens_not_sender(self):
+        root = Path(__file__).resolve().parents[1]
+        for filename, method_names in (
+            ("main.py", ("scan_finished", "scan_failed")),
+            ("translation_studio.py", ("scan_completed", "scan_failed")),
+        ):
+            tree = ast.parse((root / filename).read_text(encoding="utf-8"))
+            methods = [
+                node for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef) and node.name in method_names
+            ]
+            self.assertEqual({node.name for node in methods}, set(method_names))
+            for method in methods:
+                names = {node.id for node in ast.walk(method) if isinstance(node, ast.Name)}
+                self.assertNotIn("sender", names, f"{filename}:{method.name} must not use sender()")
+                self.assertTrue(method.args.args[1].arg == "generation")
+
 
 if __name__ == "__main__":
     unittest.main()
