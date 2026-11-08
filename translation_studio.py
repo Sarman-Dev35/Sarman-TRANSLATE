@@ -195,30 +195,6 @@ class TranslationStudio(QDialog):
         self._load_existing()
         self.refresh_model_status()
 
-    def closeEvent(self, event):
-        """Keep the dialog alive while child QThreads still use its state."""
-        active_workers = []
-        for worker in (self.scan_worker, self.worker):
-            if worker is None:
-                continue
-            try:
-                if worker.isRunning():
-                    active_workers.append(worker)
-            except RuntimeError:
-                # The C++ QThread object has already completed deferred deletion.
-                continue
-        if active_workers:
-            QMessageBox.information(
-                self,
-                "İşlem devam ediyor",
-                "Tarama, çeviri veya model işlemi tamamlanmadan Çeviri Atölyesi kapatılamaz. "
-                "İşlem bittiğinde pencereyi tekrar kapatabilirsin.",
-            )
-            event.ignore()
-            return
-        self.autosave_timer.stop()
-        event.accept()
-
     @staticmethod
     def _safe_name(value):
         return "".join(c if c.isalnum() or c in "-_" else "_" for c in value)[:80] or "game"
@@ -607,8 +583,24 @@ class TranslationStudio(QDialog):
         self.refresh_model_status()
 
     def closeEvent(self, event):
-        if (self.worker and self.worker.isRunning()) or (self.scan_worker and self.scan_worker.isRunning()):
-            QMessageBox.information(self, "İşlem sürüyor", "Model indirme, tarama veya çeviri işlemi tamamlanana kadar bu pencereyi kapatamazsın. Tamamlanan çeviriler otomatik kaydedilir.")
+        """Prevent destroying this dialog while one of its child QThreads is active."""
+        active_workers = []
+        for worker in (self.scan_worker, self.worker):
+            if worker is None:
+                continue
+            try:
+                if worker.isRunning():
+                    active_workers.append(worker)
+            except RuntimeError:
+                # The wrapped C++ QThread may already have been deleted by Qt.
+                continue
+        if active_workers:
+            QMessageBox.information(
+                self,
+                "İşlem devam ediyor",
+                "Tarama, çeviri veya model işlemi tamamlanmadan Çeviri Atölyesi kapatılamaz. "
+                "İşlem bittiğinde pencereyi tekrar kapatabilirsin.",
+            )
             event.ignore()
             return
         if self.autosave_timer.isActive():
