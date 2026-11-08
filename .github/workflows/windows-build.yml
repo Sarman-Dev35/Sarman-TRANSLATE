@@ -16,10 +16,26 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Install dependencies
+      - name: Install dependencies (retry transient package-host failures)
+        shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          $maxAttempts = 4
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            Write-Host "Dependency installation attempt $attempt of $maxAttempts"
+            python -m pip install --retries 10 --timeout 120 -r requirements.txt
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "All Python dependencies installed successfully."
+              exit 0
+            }
+
+            if ($attempt -lt $maxAttempts) {
+              $delay = 15 * $attempt
+              Write-Warning "Dependency installation failed (exit $LASTEXITCODE). Retrying in $delay seconds; this can recover from temporary HTTP 5xx errors."
+              Start-Sleep -Seconds $delay
+            }
+          }
+          throw "Python dependency installation failed after $maxAttempts attempts."
       - name: Generate Sarman TRANSLATE icon
         shell: pwsh
         run: |
