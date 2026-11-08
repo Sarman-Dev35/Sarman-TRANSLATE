@@ -19,8 +19,8 @@ class _ScanReceiver(QObject):
         self.loop = loop
         self.results = []
 
-    @Slot(list)
-    def completed(self, entries):
+    @Slot(int, list)
+    def completed(self, generation, entries):
         self.results.append(len(entries))
         if len(self.results) == 1:
             QTimer.singleShot(60, self.studio.scan)
@@ -55,6 +55,22 @@ class ScanResilienceTests(unittest.TestCase):
         second = discover_games([])
         self.assertIsInstance(first, list)
         self.assertIsInstance(second, list)
+
+    def test_stale_scan_finish_cannot_clear_newer_worker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            studio = TranslationStudio(Game("Stale Finish Test", "Test", tmp))
+            current_worker = object()
+            studio._scan_generation = 2
+            studio.scan_worker = current_worker
+            studio._scan_busy = True
+
+            studio._scan_thread_finished(1)
+
+            self.assertIs(studio.scan_worker, current_worker)
+            self.assertTrue(studio._scan_busy)
+            studio.scan_worker = None
+            studio._scan_busy = False
+            studio.close()
 
     def test_translation_studio_can_rescan_same_game_twice(self):
         with tempfile.TemporaryDirectory() as tmp:
